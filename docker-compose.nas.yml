@@ -1,0 +1,57 @@
+# Libra · NAS 本地镜像部署文件
+#
+# 适用场景：已经把镜像 tar 上传到 NAS，并用 docker load 导入。
+#
+# 使用前：
+#   1. docker load -i libra-linux-amd64.tar
+#   2. docker images | grep libra       # 确认镜像名，默认 libra:dev
+#   3. 修改 volumes 里的书籍目录
+#   4. 首次启动前给数据目录授权：
+#        mkdir -p data && sudo chown -R 1000:1000 data
+#   5. docker compose -f docker-compose.nas.yml up -d
+#
+# 如果使用 GHCR 预构建镜像，把 image 改成：
+#   image: ghcr.io/<owner>/libra:latest
+#
+# 如果 8080 端口被占用，修改 ports 左侧的宿主机端口。
+
+services:
+  libra:
+    # 本地通过 docker load 导入的镜像；默认 version=dev
+    image: libra:dev
+    container_name: libra
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      TZ: Asia/Shanghai
+      LIBRA_ADDR: ":8080"
+      # 数据库、封面、图标都放在 /data
+      LIBRA_DATA_DIR: "/data"
+      # 只允许在 /books 下添加媒体库
+      LIBRA_LIBRARY_ROOT: "/books"
+      # NAS 性能弱可改成 1
+      LIBRA_SCAN_CONCURRENCY: "2"
+      LIBRA_COVER_WIDTH: "600"
+      LIBRA_SCAN_ON_START: "true"
+      # 首个注册账号永远允许创建并自动成为管理员；
+      # 建好管理员后保持 false，避免其他人自助注册。
+      LIBRA_ALLOW_REGISTER: "false"
+
+    volumes:
+      # 数据目录：建议和本 yaml 放在同一目录
+      - ./data:/data
+      # 书籍目录：改成你自己的 NAS 路径；只读挂载
+      - /volume1/books:/books:ro
+
+    # 内存紧张可以改成 256m
+    mem_limit: 512m
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s

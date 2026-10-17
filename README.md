@@ -80,7 +80,33 @@ docker run -d \
 > 把 `<owner>` 换成你的 GitHub 用户名；如果仓库名不是 `libra`，镜像名也要相应替换。
 > 首次使用 GHCR 时，包默认可能是私有的。需要匿名拉取的话，到 GitHub 仓库的 Package 设置里把镜像可见性改为 public。
 
-### 方式 C：本地编译
+### 方式 C：NAS 本地导入镜像（离线）
+
+如果已经通过 **Build Image Tarball** 下载了镜像 tar，不需要在 NAS 上访问 GHCR：
+
+```bash
+# 1. 上传 tar 到 NAS 后导入
+docker load -i libra-linux-amd64.tar
+
+# 2. 确认镜像名，默认是 libra:dev
+docker images | grep libra
+
+# 3. 准备数据目录
+mkdir -p data
+sudo chown -R 1000:1000 data
+
+# 4. 修改 docker-compose.nas.yml 里的书籍路径
+#    /volume1/books → 你自己的 NAS 书库目录
+
+# 5. 启动
+docker compose -f docker-compose.nas.yml up -d
+```
+
+完整的 NAS compose 文件：[docker-compose.nas.yml](docker-compose.nas.yml)。
+
+如果导入的镜像标签不是 `libra:dev`，把 yaml 里的 `image:` 改成对应标签即可。
+
+### 方式 D：本地编译
 
 需要 Go 1.22+：
 
@@ -194,6 +220,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 │   └── templates/             # app.html / login.html
 ├── Dockerfile
 ├── docker-compose.yml
+├── docker-compose.nas.yml     # NAS 本地导入镜像的 compose
 ├── Makefile
 ├── go.mod / go.sum
 ├── main.go

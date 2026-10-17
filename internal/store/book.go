@@ -1,0 +1,507 @@
+package store
+
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Book 是一本书的索引记录。
+type Book struct {
+	ID          int64  `json:"id"`
+	LibraryID   int64  `json:"library_id"`
+	LibraryName string `json:"library_name,omitempty"`
+	Path        string `json:"-"` // 绝对路径，不对外暴露
+	Dir         string `json:"-"`
+	Filename    string `json:"filename"`
+	Title       string `json:"title"`
+	Author      string `json:"author"`
+	Format      string `json:"format"` // epub / pdf
+	Size        int64  `json:"size"`
+	Mtime       int64  `json:"mtime"`
+	Cover       string `json:"cover"` // 封面文件名（相对封面目录）
+	// CoverState 记录封面提取结果（ok / none / failed），增量扫描据此决定是否重试。
+	CoverState string    `json:"-"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+// Series / Volume 是展示层顺手解析出来的系列信息（不落库）：从书名或目录名里
+// 识别 "三体 2"、"Vol. 3"、"第3卷" 这类写法。它们不进 Book 结构体，是为了
+// 不动数据库扫描的那一列对应关系 —— 需要的时候用 SplitSeries 现算。
+
+const bookColumns = `b.id, b.library_id, COALESCE(l.name, ''), b.path, b.dir, b.filename,
+	b.title, b.author, b.format, b.size, b.mtime, b.cover, b.cover_state, b.created_at, b.updated_at`
+
+func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
+	var b Book
+	var created, updated int64
+	if err := row.Scan(&b.ID, &b.LibraryID, &b.LibraryName, &b.Path, &b.Dir, &b.Filename,
+		&b.Title, &b.Author, &b.Format, &b.Size, &b.Mtime, &b.Cover, &b.CoverState, &created, &updated); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	b.CreatedAt = unixToTime(created)
+	b.UpdatedAt = unixToTime(updated)
+	return &b, nil
+}
+
+// BookQuery 是书籍列表的查询条件。
+type BookQuery struct {
+	LibraryID int64  // 0 表示全部媒体库
+	Search    string // 匹配书名或作者
+	Format    string // "" 全部 / epub / pdf
+	Sort      string // title / author / created / size / updated
+	Desc      bool
+	Page      int
+	PageSize  int
+}
+
+func (q *BookQuery) normalize() {
+	if q.Page < 1 {
+		q.Page = 1
+	}
+	if q.PageSize < 1 {
+		q.PageSize = 60
+	}
+	if q.PageSize > 300 {
+		q.PageSize = 300
+	}
+}
+
+// where 生成 WHERE 子句与参数。
+func (q *BookQuery) where() (string, []any) {
+	conds := make([]string, 0, 4)
+	args := make([]any, 0, 6)
+
+	if q.LibraryID > 0 {
+		conds = append(conds, "b.library_id = ?")
+		args = append(args, q.LibraryID)
+	}
+	if f := strings.ToLower(strings.TrimSpace(q.Format)); f == "epub" || f == "pdf" {
+		conds = append(conds, "b.format = ?")
+		args = append(args, f)
+	}
+	if term := strings.TrimSpace(q.Search); term != "" {
+		like := "%" + escapeLike(term) + "%"
+		conds = append(conds, `(b.title LIKE ? ESCAPE '\' OR b.author LIKE ? ESCAPE '\' OR b.filename LIKE ? ESCAPE '\')`)
+		args = append(args, like, like, like)
+	}
+	if len(conds) == 0 {
+		return "", args
+	}
+	return " WHERE " + strings.Join(conds, " AND "), args
+}
+
+func (q *BookQuery) orderBy() string {
+	var col string
+	switch strings.ToLower(strings.TrimSpace(q.Sort)) {
+	case "author":
+		col = "b.author"
+	case "created":
+		col = "b.created_at"
+	case "updated":
+		col = "b.updated_at"
+	case "size":
+		col = "b.size"
+	default:
+		col = "b.title"
+	}
+	dir := "ASC"
+	if q.Desc {
+		dir = "DESC"
+	}
+	// 加 id 作为兜底排序键，保证分页结果稳定。
+	return fmt.Sprintf(" ORDER BY %s %s, b.id %s", col, dir, dir)
+}
+
+// ListBooks 分页查询书籍，同时返回符合条件的总数。
+func (s *Store) ListBooks(q BookQuery) ([]Book, int, error) {
+	q.normalize()
+	whereSQL, args := q.where()
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM books b`+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := `SELECT ` + bookColumns + ` FROM books b LEFT JOIN libraries l ON l.id = b.library_id` +
+		whereSQL + q.orderBy() + ` LIMIT ? OFFSET ?`
+	args = append(args, q.PageSize, (q.Page-1)*q.PageSize)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := make([]Book, 0, q.PageSize)
+	for rows.Next() {
+		b, err := scanBook(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, *b)
+	}
+	return out, total, rows.Err()
+}
+
+// GetBook 按 ID 查询单本。
+func (s *Store) GetBook(id int64) (*Book, error) {
+	return scanBook(s.db.QueryRow(
+		`SELECT `+bookColumns+` FROM books b LEFT JOIN libraries l ON l.id = b.library_id WHERE b.id = ?`, id))
+}
+
+// BookStat 是聚合统计。
+type BookStat struct {
+	Total     int   `json:"total"`
+	Epub      int   `json:"epub"`
+	Pdf       int   `json:"pdf"`
+	TotalSize int64 `json:"total_size"`
+}
+
+// Stats 返回整体（或某个媒体库）的统计信息。
+func (s *Store) Stats(libraryID int64) (BookStat, error) {
+	var st BookStat
+	where := ""
+	args := []any{}
+	if libraryID > 0 {
+		where = " WHERE library_id = ?"
+		args = append(args, libraryID)
+	}
+	err := s.db.QueryRow(`SELECT COUNT(*),
+		COALESCE(SUM(CASE WHEN format = 'epub' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(CASE WHEN format = 'pdf' THEN 1 ELSE 0 END), 0),
+		COALESCE(SUM(size), 0)
+		FROM books`+where, args...).Scan(&st.Total, &st.Epub, &st.Pdf, &st.TotalSize)
+	return st, err
+}
+
+// BookIndexRow 是扫描时用的轻量索引（只取增量比对需要的字段）。
+type BookIndexRow struct {
+	Path       string
+	Mtime      int64
+	Size       int64
+	Cover      string
+	Format     string
+	CoverState string
+}
+
+// IndexByLibrary 返回某个媒体库已有书籍的增量比对索引，以 path 为键。
+func (s *Store) IndexByLibrary(libraryID int64) (map[string]BookIndexRow, error) {
+	rows, err := s.db.Query(
+		`SELECT path, mtime, size, cover, format, cover_state FROM books WHERE library_id = ?`, libraryID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make(map[string]BookIndexRow, 512)
+	for rows.Next() {
+		var r BookIndexRow
+		if err := rows.Scan(&r.Path, &r.Mtime, &r.Size, &r.Cover, &r.Format, &r.CoverState); err != nil {
+			return nil, err
+		}
+		out[r.Path] = r
+	}
+	return out, rows.Err()
+}
+
+// UpsertBook 写入或更新一本书。
+//
+// 已存在时保留 created_at（入库时间）；封面为空时保留旧封面，避免一次失败的
+// 封面提取把已有封面清掉。
+func (s *Store) UpsertBook(b *Book) (int64, error) {
+	ts := now()
+	res, err := s.db.Exec(`
+		INSERT INTO books (library_id, path, dir, filename, title, author, format, size, mtime, cover, cover_state, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(library_id, path) DO UPDATE SET
+			dir         = excluded.dir,
+			filename    = excluded.filename,
+			title       = CASE WHEN excluded.title  <> '' THEN excluded.title  ELSE books.title  END,
+			author      = CASE WHEN excluded.author <> '' THEN excluded.author ELSE books.author END,
+			format      = excluded.format,
+			size        = excluded.size,
+			mtime       = excluded.mtime,
+			cover       = CASE WHEN excluded.cover  <> '' THEN excluded.cover  ELSE books.cover  END,
+			cover_state = excluded.cover_state,
+			updated_at  = excluded.updated_at
+	`, b.LibraryID, b.Path, b.Dir, b.Filename, b.Title, b.Author, b.Format, b.Size, b.Mtime, b.Cover, b.CoverState, ts, ts)
+	if err != nil {
+		return 0, err
+	}
+	id, err := res.LastInsertId()
+	if err == nil && id > 0 {
+		return id, nil
+	}
+	var existing int64
+	if err := s.db.QueryRow(`SELECT id FROM books WHERE library_id = ? AND path = ?`, b.LibraryID, b.Path).Scan(&existing); err != nil {
+		return 0, err
+	}
+	return existing, nil
+}
+
+// UpdateBookMeta 仅更新元数据字段（不改变 mtime/size）。
+func (s *Store) UpdateBookMeta(id int64, title, author, cover string) error {
+	_, err := s.db.Exec(`UPDATE books SET title = ?, author = ?, cover = ?, updated_at = ? WHERE id = ?`,
+		title, author, cover, now(), id)
+	return err
+}
+
+// DeleteBook 删除单本记录。
+func (s *Store) DeleteBook(id int64) error {
+	_, err := s.db.Exec(`DELETE FROM books WHERE id = ?`, id)
+	return err
+}
+
+// DeleteBooksByLibrary 清空某个媒体库下的所有书籍记录。
+func (s *Store) DeleteBooksByLibrary(libraryID int64) error {
+	_, err := s.db.Exec(`DELETE FROM books WHERE library_id = ?`, libraryID)
+	return err
+}
+
+// DeleteBooksExcept 删除某个媒体库下不在 keep 集合中的记录（清理磁盘上已消失的文件）。
+// keep 为路径集合。返回被删除的记录数，以及需要一并删除的封面文件名。
+func (s *Store) DeleteBooksExcept(libraryID int64, keep map[string]struct{}) (int, []string, error) {
+	rows, err := s.db.Query(`SELECT id, path, cover FROM books WHERE library_id = ?`, libraryID)
+	if err != nil {
+		return 0, nil, err
+	}
+	type stale struct {
+		id    int64
+		cover string
+	}
+	var drop []stale
+	for rows.Next() {
+		var id int64
+		var path, cover string
+		if err := rows.Scan(&id, &path, &cover); err != nil {
+			rows.Close()
+			return 0, nil, err
+		}
+		if _, ok := keep[path]; !ok {
+			drop = append(drop, stale{id: id, cover: cover})
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, nil, err
+	}
+	if len(drop) == 0 {
+		return 0, nil, nil
+	}
+
+	covers := make([]string, 0, len(drop))
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	stmt, err := tx.Prepare(`DELETE FROM books WHERE id = ?`)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer stmt.Close()
+
+	for _, d := range drop {
+		if _, err := stmt.Exec(d.id); err != nil {
+			return 0, nil, err
+		}
+		if d.cover != "" {
+			covers = append(covers, d.cover)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, nil, err
+	}
+	return len(drop), covers, nil
+}
+
+// ------------------------------------------------------------------ 系列识别
+//
+// 「系列」不是一个需要维护的字段，而是一个可以从现有数据里推出来的东西：
+// 书库管理员给多卷书命名的方式高度收敛（"三体 2"、"基地 Vol.3"、"第3卷"），
+// 目录名也常常直接就是系列名。于是这里只做一次纯文本解析，不引入新表、
+// 不改扫描逻辑，旧数据库升级上来立刻就有系列可看。解析失败就是"没有系列"，
+// 界面上自然退化成普通卡片，不需要任何特判。
+
+var (
+	// 明确带卷号记号的写法：Vol.3 / vol 3 / Volume III / 第3卷 / 第三部 / Book 2。
+	// 注意 Go 的 regexp 不支持局部大小写开关，整条表达式已经统一用 (?i)。
+	volumeRe = regexp.MustCompile(`(?i)(?:\bvol(?:ume)?\.?|\bbook|第)\s*` +
+		`([0-9]{1,4}|[ivx]{1,5}|[零一二两三四五六七八九十百]{1,4})` +
+		`\s*(?:卷|册|部|篇|集|季)?`)
+	// 标题末尾的裸卷号：冰与火之歌 2 / 冰与火之歌（2）。
+	// 只认 1~2 位数字，避免把 "1984" 这类数字标题当成卷号。
+	volumeTrailRe = regexp.MustCompile(`(?:[\s\-_·:：]+[0-9]{1,2}(?:[\s\-_·:：]+[0-9]{1,2}){0,2}` +
+		`(?:[\s\-_·:：]*[（(][0-9]{1,2}[)）])*|[\s\-_·:：]*[（(][0-9]{1,2}[)）])$`)
+	// 上下册："人类简史 上" / "生活与命运（上下册）"
+	splitTailRe = regexp.MustCompile(`[\s\-_·:：]*[（(]?[上中下]册?[)）]?$`)
+	// "全9册"这类整体标注：先从标题里抹掉，它不参与卷号判定。
+	allVolsRe = regexp.MustCompile(`[\s\-_·:：]*[（(]?\s*全\s*[0-9一二三四五六七八九十百]{1,3}\s*册\s*[)）]?`)
+	decorRe   = regexp.MustCompile(`^[\s\-_·:：,.、|]+|[\s\-_·:：,.、|]+$`)
+	// 书名里常见的版本/来源标记，识别系列前先剥掉。
+	noiseRe = regexp.MustCompile(`(?i)[\[【(（]\s*(?:epub|pdf|mobi|azw3?|txt|扫描版|影印版|完整版|精校版)\s*[\]】)）]`)
+)
+
+var cnDigits = map[rune]int{
+	'零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
+	'五': 5, '六': 6, '七': 7, '八': 8, '九': 9,
+}
+
+var romanDigits = map[string]string{
+	"i": "1", "ii": "2", "iii": "3", "iv": "4", "v": "5",
+	"vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10",
+}
+
+// cnNumber 把 1~999 的中文数字转成阿拉伯数字；无法解析时返回空串。
+func cnNumber(s string) string {
+	if s == "" {
+		return ""
+	}
+	total, cur := 0, 0
+	for _, r := range s {
+		switch r {
+		case '百':
+			if cur == 0 {
+				cur = 1
+			}
+			total += cur * 100
+			cur = 0
+		case '十':
+			if cur == 0 {
+				cur = 1
+			}
+			total += cur * 10
+			cur = 0
+		default:
+			d, ok := cnDigits[r]
+			if !ok {
+				return ""
+			}
+			cur = d
+		}
+	}
+	total += cur
+	if total <= 0 || total > 999 {
+		return ""
+	}
+	return strconv.Itoa(total)
+}
+
+// normVolume 把各种卷号写法统一成阿拉伯数字字符串。
+func normVolume(raw string) string {
+	raw = strings.TrimSpace(raw)
+	low := strings.ToLower(raw)
+	if v, ok := romanDigits[low]; ok && !strings.ContainsAny(low, "0123456789") {
+		return v
+	}
+	if n, err := strconv.Atoi(raw); err == nil {
+		return strconv.Itoa(n)
+	}
+	return cnNumber(raw)
+}
+
+// SplitSeries 从书名与目录名里识别系列名与卷号。
+//
+// 返回的系列名为空表示"这本书不属于任何系列"。判定刻意保守：只有书名主体
+// 后面明确跟着卷号记号时才给出系列名 —— 宁可漏判，也不要误判。误判会把毫不
+// 相干的书并成一个假系列，比不做聚合更难看。给出"某某"但没有卷号的情形，
+// 由调用方按"同名至少两本"决定是否成组。
+func SplitSeries(title, dir string) (series, volume string) {
+	t := decorRe.ReplaceAllString(noiseRe.ReplaceAllString(strings.TrimSpace(title), " "), "")
+	t = decorRe.ReplaceAllString(allVolsRe.ReplaceAllString(t, ""), "")
+	if t == "" {
+		return "", ""
+	}
+
+	// 1) 明确带卷号记号：第3卷 / Vol.3 / 第三部 / Book 2。
+	//    卷号后面必须紧跟"卷/册/部…"或直接到句末，否则它只是标题里的一个数字
+	//    （"三体 2：黑暗森林"里的 2 是卷号，但 "第 2 版" 里的 2 不是）。
+	if m := volumeRe.FindStringSubmatchIndex(t); m != nil {
+		if vol := normVolume(t[m[2]:m[3]]); vol != "" {
+			head := decorRe.ReplaceAllString(t[:m[0]], "")
+			term := decorRe.ReplaceAllString(t[m[1]:], "")
+			hasUnit := m[1] > m[3] && decorRe.ReplaceAllString(t[m[3]:m[1]], "") != ""
+			if utf8RuneCount(head) >= 2 && (term == "" || hasUnit) {
+				return head, vol
+			}
+		}
+	}
+
+	// 2) 标题末尾的裸卷号：冰与火之歌 2 / 冰与火之歌（2）。
+	//    紧邻卷号的是拉丁字母时放过（"Windows 10" 这类版本号不是卷号）。
+	if m := volumeTrailRe.FindStringIndex(t); m != nil {
+		head := decorRe.ReplaceAllString(t[:m[0]], "")
+		if vol := normVolume(lastNumber(t[m[0]:])); vol != "" &&
+			utf8RuneCount(head) >= 2 && !hasLatinLetterAt(t, m[0]) {
+			return head, vol
+		}
+	}
+
+	// 3) 上下册："人类简史 上" / "生活与命运（上下册）"，卷号留空。
+	if m := splitTailRe.FindStringIndex(t); m != nil {
+		if head := decorRe.ReplaceAllString(t[:m[0]], ""); utf8RuneCount(head) >= 2 {
+			return head, ""
+		}
+	}
+
+	// 4) 目录名就是系列名、书名是其中一卷（/books/三体/黑暗森林.epub）。
+	//    只有书名以目录名开头时才算数，否则同一目录下不相干的两本书
+	//    会被并成一个假系列 —— 那比不聚合更难看。
+	if d := decorRe.ReplaceAllString(strings.TrimSpace(dir), ""); d != "" && d != t && utf8RuneCount(d) >= 2 {
+		if strings.HasPrefix(t, d) {
+			return d, ""
+		}
+	}
+	return "", ""
+}
+
+// hasLatinLetterAt 判断 pos 之前紧邻的字符是不是拉丁字母 ——
+// 用来放过 "Windows 10" 这类"产品名 + 版本号"，它们不该被当成第 10 卷。
+func hasLatinLetterAt(s string, pos int) bool {
+	r := []rune(s[:pos])
+	if len(r) == 0 {
+		return false
+	}
+	c := r[len(r)-1]
+	return c < 0x80 && ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+}
+
+// lastNumber 取片段里最后一个数字（"12" 取 12，"2 (3)" 取 3）。
+func lastNumber(s string) string {
+	end := -1
+	for i := len(s) - 1; i >= 0; i-- {
+		if s[i] >= '0' && s[i] <= '9' {
+			end = i
+			break
+		}
+	}
+	if end < 0 {
+		return ""
+	}
+	start := end
+	for start > 0 && s[start-1] >= '0' && s[start-1] <= '9' {
+		start--
+	}
+	return s[start : end+1]
+}
+
+func utf8RuneCount(s string) int { return len([]rune(s)) }
+
+// escapeLike 转义 LIKE 通配符，配合 ESCAPE '\' 使用。
+func escapeLike(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `%`, `\%`)
+	s = strings.ReplaceAll(s, `_`, `\_`)
+	return s
+}

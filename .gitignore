@@ -1,0 +1,28 @@
+# runtime data
+/data/
+/dist/
+/testdata/
+*.db
+*.db-shm
+*.db-wal
+
+# build / test outputs
+/libra
+/libra.exe
+*.exe
+*.test
+*.out
+*.prof
+coverage.*
+
+# local dev caches & tooling
+/.gocache/
+/.gotmp/
+/.workbuddy/
+/.acl-recovery/
+/.vscode/
+/.idea/
+.env
+*.log
+.DS_Store
+Thumbs.db

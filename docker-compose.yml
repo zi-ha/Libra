@@ -1,0 +1,48 @@
+services:
+  libra:
+    # 默认从本仓库源码构建；也可以直接使用 GHCR 预构建镜像：
+    #   LIBRA_IMAGE=ghcr.io/<owner>/libra:latest docker compose pull
+    #   LIBRA_IMAGE=ghcr.io/<owner>/libra:latest docker compose up -d --no-build
+    image: ${LIBRA_IMAGE:-libra:local}
+    build:
+      context: .
+      args:
+        VERSION: ${LIBRA_VERSION:-dev}
+        # 不想要 PDF 首页渲染（可省约 15MB 镜像体积）时改成 "0"
+        WITH_POPPLER: "${WITH_POPPLER:-1}"
+    container_name: libra
+    restart: unless-stopped
+
+    ports:
+      - "8080:8080"
+
+    environment:
+      TZ: Asia/Shanghai
+      LIBRA_ADDR: ":8080"
+      # 数据库与封面都落在 /data，务必挂载出来，容器重建不丢数据
+      LIBRA_DATA_DIR: "/data"
+      # 只允许在 /books 之下创建媒体库
+      LIBRA_LIBRARY_ROOT: "/books"
+      # pdftoppm 并发数，NAS 性能弱就调到 1~2
+      LIBRA_SCAN_CONCURRENCY: "2"
+      LIBRA_COVER_WIDTH: "600"
+      LIBRA_SCAN_ON_START: "true"
+      # 首个账号始终允许创建并自动成为管理员；建好管理员后建议保持 false
+      LIBRA_ALLOW_REGISTER: "false"
+
+    volumes:
+      # 首次运行前建议先创建并授权：
+      #   mkdir -p data && sudo chown -R 1000:1000 data
+      - ./data:/data
+      # 书籍目录：只读挂载，Libra 绝不写入
+      - /volume1/books:/books:ro
+
+    # 常驻内存很小，给个上限防止异常情况吃满 NAS
+    mem_limit: 256m
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s

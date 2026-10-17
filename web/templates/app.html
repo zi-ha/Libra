@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-role="{{if .IsAdmin}}admin{{else}}user{{end}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0d10">
+  <title>Libra</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6.5' fill='%23e0452f'/%3E%3Ctext x='12' y='17.6' font-family='Georgia,serif' font-size='14.5' font-weight='600' fill='%23fff3f0' text-anchor='middle'%3E%E4%B9%A6%3C/text%3E%3C/svg%3E">
+  <script>
+    /* 在样式生效前决定主题与网格密度，避免首屏闪白/闪黑。 */
+    (function () {
+      var t = null, d = null;
+      try { t = localStorage.getItem('libra-theme'); d = localStorage.getItem('libra-density'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      }
+      var root = document.documentElement;
+      root.setAttribute('data-theme', t);
+      // 关键：外部样式表还没到达之前，浏览器用的是默认白色画布 —— 那一下白闪
+      // 就来自这里。提前把底色的内联样式写上去，CSS 迟到也不会闪。
+      // 取值必须与 style.css 里的 --bg 保持一致。
+      root.style.colorScheme = (t === 'light') ? 'light' : 'dark';
+      root.style.backgroundColor = (t === 'light') ? '#f4f5f7' : '#0c0d10';
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', t === 'light' ? '#ffffff' : '#15171d');
+      if (d === 's' || d === 'm' || d === 'l') root.setAttribute('data-density', d);
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- 侧栏：品牌 / 导航 / 藏书统计 / 用户。窄屏时变抽屉。 -->
+  <aside class="sidebar" id="sidebar-panel">
+    <div class="side-head">
+      <a href="#/" class="brand" title="Libra">
+        <span class="brand-mark"><span class="seal-char">书</span></span>
+        <span class="brand-name">Libra<span class="brand-sub">私人书库</span></span>
+      </a>
+    </div>
+
+    <nav id="sidebar" class="side-nav"></nav>
+
+    <div class="side-foot">
+      <div id="sidebar-stats" class="side-stats"></div>
+      <div class="usermenu-wrap">
+        <button id="user-btn" class="usermenu-btn" type="button" aria-haspopup="menu" aria-expanded="false">
+          <span class="avatar">{{slice .Username 0 1}}</span>
+          <span class="u-name">
+            {{.Username}}
+            <span class="u-role">{{if .IsAdmin}}管理员{{else}}普通成员{{end}}</span>
+          </span>
+          <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div id="user-menu" class="menu u-hidden" role="menu">
+          <div class="menu-head">
+            <div class="n">{{.Username}}</div>
+            <div class="r">{{if .IsAdmin}}管理员 · 可管理媒体库与账号{{else}}普通成员 · 浏览与下载{{end}}</div>
+          </div>
+          <a class="menu-item" href="#/libraries" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 9.5L12 3l9 6.5"/><path d="M5.5 10v10M9.5 10v10M14.5 10v10M18.5 10v10"/><path d="M3 20.5h18"/>
+            </svg>
+            媒体库管理
+          </a>
+          {{if .IsAdmin}}
+          <button id="btn-users" class="menu-item" type="button" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="9" cy="8.4" r="3.4"/><path d="M2.8 19.6a6.6 6.6 0 0 1 12.4 0"/>
+              <path d="M17 8.2a3 3 0 0 1 0 5.9"/><path d="M18.4 19.6a6.4 6.4 0 0 0-1.6-4.3"/>
+            </svg>
+            账号管理
+          </button>
+          {{end}}
+          <button id="btn-password" class="menu-item" type="button" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="10.5" width="16" height="10" rx="2.2"/><path d="M8 10.5V7.6a4 4 0 0 1 8 0v2.9"/>
+            </svg>
+            修改密码
+          </button>
+          <button id="btn-logout" class="menu-item danger" type="button" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 17l5-5-5-5"/><path d="M20 12H9"/><path d="M12 4H6.5A2.5 2.5 0 0 0 4 6.5v11A2.5 2.5 0 0 0 6.5 20H12"/>
+            </svg>
+            退出登录
+          </button>
+        </div>
+      </div>
+    </div>
+  </aside>
+  <div class="nav-scrim" id="nav-scrim" aria-hidden="true"></div>
+
+  <!-- 内容区：顶栏吸顶，下面依次是扫描条与视图 -->
+  <div class="main">
+    <header class="topbar" id="topbar">
+      <button id="nav-toggle" class="nav-toggle" type="button" aria-label="打开导航" aria-controls="sidebar-panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <path d="M4 7h16M4 12h16M4 17h16"/>
+        </svg>
+      </button>
+
+      <a href="#/" class="brand" title="Libra">
+        <span class="brand-mark"><span class="seal-char">书</span></span>
+      </a>
+
+      <div class="crumb">
+        <h1 id="tb-title">全部书籍</h1>
+        <span class="crumb-sep">·</span>
+        <span class="crumb-sub" id="tb-sub"></span>
+      </div>
+
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>
+        </svg>
+        <input id="search" type="search" placeholder="搜索书名、作者、文件名…" autocomplete="off" aria-label="搜索">
+        <kbd>/</kbd>
+      </div>
+
+      <div class="header-tools">
+        <select id="sort" class="select hide-md" aria-label="排序">
+          <option value="title:asc">书名 A→Z</option>
+          <option value="title:desc">书名 Z→A</option>
+          <option value="author:asc">作者 A→Z</option>
+          <option value="created:desc">最近入库</option>
+          <option value="created:asc">最早入库</option>
+          <option value="size:desc">体积 大→小</option>
+          <option value="size:asc">体积 小→大</option>
+        </select>
+
+        <button id="theme-btn" class="btn btn-icon btn-sm" type="button" title="切换深浅色" aria-label="切换深浅色"></button>
+      </div>
+    </header>
+
+    <div id="scan-bar" class="scanbar u-hidden">
+      <div class="scanbar-inner">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round">
+          <path d="M12 3a9 9 0 1 0 9 9"/>
+        </svg>
+        <span id="scan-text">正在扫描…</span>
+        <span class="track"><span id="scan-progress" class="fill" style="width:0%"></span></span>
+      </div>
+    </div>
+
+    <main id="view" class="view"></main>
+  </div>
+
+</div>
+
+<div id="toasts" class="toasts"></div>
+<div id="modal-root" class="modal-root"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

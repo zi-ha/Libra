@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0c0d10">
+  <title>登录 · Libra</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6.5' fill='%23e0452f'/%3E%3Ctext x='12' y='17.6' font-family='Georgia,serif' font-size='14.5' font-weight='600' fill='%23fff3f0' text-anchor='middle'%3E%E4%B9%A6%3C/text%3E%3C/svg%3E">
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('libra-theme'); } catch (e) {}
+      if (t !== 'light' && t !== 'dark') {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+      }
+      var root = document.documentElement;
+      root.setAttribute('data-theme', t);
+      // 同 app.html：先把画布底色内联，避免样式表到达前闪白。取值与 --bg 一致。
+      root.style.colorScheme = (t === 'light') ? 'light' : 'dark';
+      root.style.backgroundColor = (t === 'light') ? '#f4f5f7' : '#0c0d10';
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="auth">
+
+  <aside class="auth-aside">
+    <div class="auth-brand">
+      <span class="brand-mark"><span class="seal-char">书</span></span>
+      <span class="brand-name">Libra<span class="brand-sub">私人书库</span></span>
+    </div>
+
+    <div class="auth-copy">
+      <h2>把你的书架<br><em>搬进 NAS。</em></h2>
+      <p>挂一个目录，它就是一座书库。递归扫描、抽取元数据、生成封面，
+        然后按你自己的方式浏览和下载。</p>
+      <div class="auth-points">
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>数据只在你自己的磁盘上</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>EPUB 与 PDF 自动提取封面</span>
+        <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>手机、平板、桌面浏览器都能开</span>
+      </div>
+    </div>
+
+    <div class="shelf" aria-hidden="true">
+      <div class="shelf-books">
+        <i style="width:7.6%;height:92%;background:#2f4a66"></i>
+        <i style="width:6.0%;height:80%;background:#6d3a38"></i>
+        <i style="width:8.8%;height:98%;background:#3a5a48"></i>
+        <i style="width:5.2%;height:74%;background:#6a4a35"></i>
+        <i style="width:8.0%;height:88%;background:#4d4a63"></i>
+        <i style="width:6.4%;height:70%;background:#6d6038"></i>
+        <i style="width:9.2%;height:96%;background:#3a5a48"></i>
+        <i style="width:5.6%;height:78%;background:#6d3a38"></i>
+        <i style="width:7.2%;height:90%;background:#2f4a66"></i>
+        <i style="width:6.8%;height:72%;background:#6a4a35"></i>
+        <i style="width:8.4%;height:100%;background:#4d4a63"></i>
+        <i style="width:6.0%;height:82%;background:#2f4a66"></i>
+        <i style="width:8.2%;height:94%;background:#6d6038"></i>
+      </div>
+      <div class="shelf-board"></div>
+    </div>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-box">
+
+      <h1 class="auth-title">欢迎回来</h1>
+      <p class="auth-desc">登录后即可浏览封面墙、搜索和下载电子书。</p>
+
+      <div class="tabs" role="tablist">
+        <button id="tab-login" type="button" role="tab" aria-selected="true">登录</button>
+        <button id="tab-register" type="button" role="tab" aria-selected="false">注册</button>
+      </div>
+
+      <form id="login-form" class="auth-form" novalidate>
+        <div id="setup-tip" class="alert info u-hidden" style="margin-bottom:18px"></div>
+
+        <div class="field">
+          <label for="username">用户名</label>
+          <input id="username" name="username" type="text" class="input" autocomplete="username"
+                 required placeholder="请输入用户名">
+        </div>
+
+        <div class="field">
+          <label for="password">密码</label>
+          <input id="password" name="password" type="password" class="input" autocomplete="current-password"
+                 required placeholder="请输入密码">
+          <div id="pwd-hint" class="hint u-hidden">至少 8 位，且需包含字母、数字、符号中的至少两类。</div>
+        </div>
+
+        <div class="field u-hidden" id="confirm-wrap">
+          <label for="password2">确认密码</label>
+          <input id="password2" type="password" class="input" autocomplete="new-password"
+                 placeholder="再次输入密码">
+        </div>
+
+        <div id="login-error" class="alert error u-hidden"></div>
+
+        <button id="submit-btn" type="submit" class="btn btn-primary auth-submit">登录</button>
+      </form>
+
+      <p class="auth-foot" style="margin-top:22px;color:var(--text-3);font-size:12px;text-align:center">
+        数据全部保存在你自己的磁盘上，不经过任何第三方服务。
+      </p>
+    </div>
+  </main>
+
+</div>
+
+<script src="/static/login.js"></script>
+    <script>
+      (function () {
+        // 改动后自动刷新：服务端只在开发模式（LIBRA_WEB_DIR）下才提供这个接口；
+        // 生产环境一次探测失败就彻底停止，不会多出任何请求。
+        var version = null, alive = true;
+        function tick() {
+          if (!alive) return;
+          fetch('/__dev/reload', { cache: 'no-store' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (b) {
+              if (!b || b.ok !== true) { alive = false; return; }
+              if (version === null) { version = b.version; return; }
+              if (b.version !== version) { location.reload(); }
+            })
+            .catch(function () { alive = false; });
+        }
+        setTimeout(function () {
+          tick();
+          var t = setInterval(function () { if (!alive) { clearInterval(t); return; } tick(); }, 1000);
+        }, 2000);
+      })();
+    </script>
+</body>
+</html>

@@ -20,7 +20,7 @@ tidy:
 	go mod tidy
 
 fmt:
-	gofmt -w .
+	gofmt -w main.go internal
 
 vet:
 	go vet ./...

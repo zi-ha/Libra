@@ -174,6 +174,9 @@ func NewRouter(cfg *config.Config, st *store.Store, sc *scanner.Scanner) (*gin.E
 	admin.GET("/api/browse", s.browse) // 目录浏览：能枚举服务器目录，仅管理员
 	admin.POST("/api/icons", s.uploadIcon)
 
+	admin.GET("/api/admin/settings", s.getAdminSettings)
+	admin.PUT("/api/admin/settings", s.updateAdminSettings)
+
 	admin.GET("/api/users", s.listUsers)
 	admin.POST("/api/users", s.createUser)
 	admin.PUT("/api/users/:id/role", s.setUserRole)

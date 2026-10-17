@@ -27,7 +27,7 @@ func (s *Server) pageLogin(c *gin.Context) {
 		}
 	}
 	c.HTML(http.StatusOK, "login.html", gin.H{
-		"AllowRegister": s.cfg.AllowRegister,
+		"AllowRegister": s.allowRegister(),
 	})
 }
 
@@ -53,7 +53,7 @@ func (s *Server) me(c *gin.Context) {
 	resp := gin.H{
 		"authenticated":  false,
 		"needs_setup":    count == 0,
-		"allow_register": s.cfg.AllowRegister || count == 0,
+		"allow_register": s.allowRegister() || count == 0,
 		"user":           nil,
 	}
 
@@ -89,7 +89,7 @@ func (s *Server) register(c *gin.Context) {
 		failErr(c, http.StatusInternalServerError, "读取用户失败", err)
 		return
 	}
-	if count > 0 && !s.cfg.AllowRegister {
+	if count > 0 && !s.allowRegister() {
 		fail(c, http.StatusForbidden, "系统已关闭自助注册，请联系管理员开通账号")
 		return
 	}

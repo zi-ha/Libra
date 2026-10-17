@@ -62,7 +62,8 @@ func (s *Server) serveThumb(c *gin.Context) {
 	}
 
 	thumbDir := filepath.Join(root, libID, "thumbs")
-	thumbPath := filepath.Join(thumbDir, name+".jpg")
+	thumbName := strings.TrimSuffix(name, filepath.Ext(name)) + ".jpg"
+	thumbPath := filepath.Join(thumbDir, thumbName)
 
 	// 缓存命中且比原图新：直接发缓存。
 	if ti, err := os.Stat(thumbPath); err == nil && !ti.IsDir() &&

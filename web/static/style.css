@@ -3,7 +3,7 @@
    ----------------------------------------------------------------------------
    造型参照 Emby / Jellyfin 这类媒体服务器：左侧常驻导航侧栏，右侧是内容
    区，内容顶部有一条随滚动吸顶的工具条；画面主体交给大尺寸的封面与横幅，
-   界面自己的装饰降到最低 —— 一个媒体库好不好看，取决于封面墙排得整不整齐，
+   界面自己的装饰降到最低 —— 一个书库好不好看，取决于封面墙排得整不整齐，
    而不是取决于界面有多少渐变。
 
    与"纸与墨"旧版的差别，也是这次重做的理由：
@@ -13,8 +13,8 @@
      · 信息密度：卡片正文只留书名与作者两行，尺寸、格式、入库时间全部退出
        封面墙。Emby 的封面墙安静，是因为它不让文字和封面抢注意力。
      · 主视觉：首页顶部是一条精选横幅（封面做背景 + 横向一列海报），下面
-       是媒体库宫格与海报墙。
-     · 侧栏用彩色图标块区分媒体库（颜色由库名哈希决定，稳定不变），这是
+       是书库宫格与海报墙。
+     · 侧栏用彩色图标块区分书库（颜色由库名哈希决定，稳定不变），这是
        Emby 侧栏最好认的地方；界面其余部分仍然保持中性。
 
    主题仍然是两套（深色 / 浅色），令牌全部集中在下面这一段，改色只改这里。
@@ -840,9 +840,9 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .hero-nav.prev { left: 10px; }
 .hero-nav.next { right: 10px; }
 
-/* ------------------------------------------------------------------ 首页媒体库入口
+/* ------------------------------------------------------------------ 首页书库入口
    像 Emby 的库卡片：每座库用最近三本书的封面拼成一张横向卡片，
-   库名压在底部。不显示分区标题、数量或"媒体库列表"入口。 */
+   库名压在底部。不显示分区标题、数量或"书库列表"入口。 */
 
 .home-libs { margin-bottom: 30px; }
 .home-lib-row { display: flex; flex-wrap: wrap; gap: 12px; }
@@ -923,7 +923,7 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .home-lib.is-empty .home-lib-veil { background: linear-gradient(180deg, rgba(6, 7, 10, .02) 0%, rgba(6, 7, 10, .24) 100%); }
 
 /* ------------------------------------------------------------------ 首页分区标题
-   每个媒体库一行的抬头：库名（可点进库）+ 本数 + 右侧"查看全部"。 */
+   每个书库一行的抬头：库名（可点进库）+ 本数 + 右侧"查看全部"。 */
 
 .section-head {
   display: flex; align-items: center; gap: 12px;
@@ -1324,6 +1324,7 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 14px;
+  align-items: start;
 }
 .admin-card {
   display: block;
@@ -1576,7 +1577,7 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .form-row { display: flex; gap: 9px; }
 .form-row .input { flex: 1; min-width: 0; }
 
-/* 媒体库封面编辑：左预览、右操作 */
+/* 书库封面编辑：左预览、右操作 */
 .lib-cover-edit { display: flex; gap: 14px; align-items: flex-start; }
 .lib-cover-preview {
   width: 190px; flex: none;

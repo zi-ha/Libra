@@ -9,12 +9,16 @@
 ## 功能
 
 - **书库**：任意多个书库，每个库对应一个本地目录；独立扫描、独立统计、独立图标。
+- **封面缩略图**：封面墙 / 首页横排 / 轮播缩略图统一走 `/thumbs/`，首次访问生成 400px 缓存，避免每张卡片都下载原图。
 - **书库封面**：管理员可在「编辑书库」里上传自定义封面；不上传时自动取该库最近几本书的封面，斜向叠放生成一张拼贴封面。
 - **首页**：精选轮播（统一 `cover` + 高斯模糊 + 暗色遮罩）、书库入口卡、各库最新入库横排。
 - **浏览**：封面墙 / 搜索 / EPUB·PDF 筛选 / 按书名、作者、入库时间、体积排序 / 三档网格密度 / 滚动到底自动续页。
 - **详情与下载**：封面、作者、格式、体积、所属库、入库时间、原始文件名；流式下载，支持 Range 断点续传与中文文件名。
 - **账号与权限**：管理员 / 普通成员两级角色；首个注册账号自动成为管理员。
+- **管理后台**：`#/admin` 集中放注册开关、书库管理、账号管理和系统信息；普通成员不显示入口。
+- **登录 / 注册**：登录页支持显示密码、注册状态提示；管理员可随时在后台开放或关闭注册。
 - **体验**：深色 / 浅色主题、侧栏抽屉、快捷键 `/` 聚焦搜索、响应式布局。
+- **版本**：当前版本 `1.0.0`，统一从 `main.go` 的 `var version` 读取。
 
 | 深色 | 浅色 |
 |---|---|
@@ -22,7 +26,7 @@
 
 ### 管理员上传书库封面
 
-进入「管理书库」→ 对应库的「编辑」→「书库封面」。支持上传 / 更换 / 恢复自动拼图，建议使用 16:9 横图。
+进入「管理后台」→「书库管理」→ 对应库的「编辑」→「书库封面」。支持上传 / 更换 / 恢复自动拼图，建议使用 16:9 横图。
 
 ![编辑书库封面](docs/screenshots/library-cover.webp)
 
@@ -72,9 +76,9 @@ docker run -d \
 
 | 标签 | 来源 |
 |---|---|
-| `latest` | `main` 分支或 `v*` 标签 |
-| `main` | `main` 分支最新构建 |
-| `v1.2.3` / `1.2.3` / `1.2` | Git 标签 `v1.2.3` |
+| `1.0.0` / `v1.0.0` / `1.0` | `main.go` 里的 `var version` |
+| `latest` | `main` 分支手动运行 |
+| `main` | `main` 分支手动运行 |
 | `sha-xxxxxxx` | 对应 commit |
 
 > 把 `<owner>` 换成你的 GitHub 用户名；如果仓库名不是 `libra`，镜像名也要相应替换。
@@ -88,7 +92,7 @@ docker run -d \
 # 1. 上传 tar 到 NAS 后导入
 docker load -i libra-linux-amd64.tar
 
-# 2. 确认镜像名，默认是 libra:dev
+# 2. 确认镜像名，默认是 libra:1.0.0
 docker images | grep libra
 
 # 3. 准备数据目录
@@ -104,7 +108,7 @@ docker compose -f docker-compose.nas.yml up -d
 
 完整的 NAS compose 文件：[docker-compose.nas.yml](docker-compose.nas.yml)。
 
-如果导入的镜像标签不是 `libra:dev`，把 yaml 里的 `image:` 改成对应标签即可。
+如果导入的镜像标签不是 `libra:1.0.0`，把 yaml 里的 `image:` 改成对应标签即可。
 
 ### 方式 D：本地编译
 
@@ -135,10 +139,11 @@ make docker                # 本地 docker build
 ## 首次使用
 
 1. 打开 `http://<NAS-IP>:8080`，注册第一个账号（自动成为管理员）。
-2. 进入「管理书库」→「新建书库」，选择挂载在 `/books` 下的目录。
+2. 进入「管理后台」→「书库管理」→「新建书库」，选择挂载在 `/books` 下的目录。
 3. 保存后会立即触发一次扫描；EPUB 会读取内嵌元数据与封面，PDF 会尝试渲染首页封面。
 4. 回到首页即可看到书库入口卡、精选轮播和各库最新入库。
 5. 可选：在「编辑书库」里上传自定义封面；不上传则自动拼贴。
+6. 在「管理后台」里可以随时开放 / 关闭注册，或进入账号管理创建用户。
 
 PDF 首页渲染依赖容器内的 `poppler-utils`。默认镜像已包含；如果不需要，可在构建时使用 `WITH_POPPLER=0`，PDF 仍可入库和下载，但没有渲染出来的首页封面。
 
@@ -160,7 +165,7 @@ PDF 首页渲染依赖容器内的 `poppler-utils`。默认镜像已包含；如
 | `LIBRA_COVER_WIDTH` | `600` | PDF 首页渲染宽度（px） |
 | `LIBRA_SCAN_ON_START` | `true` | 启动时自动做一次增量扫描 |
 | `LIBRA_SESSION_TTL_HOURS` | `720` | 登录会话有效期（小时） |
-| `LIBRA_ALLOW_REGISTER` | `true` | 是否允许自助注册；首个账号始终允许创建 |
+| `LIBRA_ALLOW_REGISTER` | `true` | 初始注册开关；首个账号始终允许创建。管理员可在「管理后台」运行时覆盖并持久化 |
 | `LIBRA_TRUSTED_PROXIES` | 空 | 反向代理地址，用于获取真实客户端 IP |
 | `LIBRA_WEB_DIR` | 空 | 开发模式：从磁盘读取 `web/`，修改后刷新即可；生产环境留空 |
 
@@ -170,8 +175,9 @@ PDF 首页渲染依赖容器内的 `poppler-utils`。默认镜像已包含；如
 <DATA_DIR>/
 ├── libra.db                  SQLite（WAL 模式）
 ├── covers/<库ID>/
-│   ├── <hash>.jpg            书籍封面
-│   └── _library-<时间戳>.jpg 管理员上传的书库封面
+│   ├── <hash>.jpg            书籍原图封面
+│   ├── _library-<时间戳>.jpg 管理员上传的书库封面
+│   └── thumbs/               400px 封面缩略图缓存
 └── icons/                    管理员上传的图标
 ```
 
@@ -201,15 +207,19 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 ```
 .
 ├── .github/workflows/
-│   ├── docker-image.yml       # 手动触发：多架构镜像推送到 GHCR
+│   ├── docker-image.yml       # 手动触发：读代码版本 → GHCR 镜像 + GitHub Release
 │   └── image-tar.yml          # 手动触发：单架构镜像导出 tar 作为 Artifact
 ├── docs/screenshots/          # README 截图
 ├── internal/
 │   ├── auth/                  # 密码策略、bcrypt、会话令牌
 │   ├── config/                # 环境变量
 │   ├── httpx/                 # Gin 路由、鉴权、REST handlers
+│   │   ├── library_handlers.go
+│   │   ├── settings_handlers.go  # 管理员设置（注册开关）
+│   │   └── thumb_handlers.go     # 封面缩略图生成与缓存
 │   ├── scanner/               # 目录遍历、EPUB / PDF 解析、封面生成
 │   └── store/                 # SQLite 迁移与 DAO
+│       └── settings.go        # settings 表读写
 ├── scripts/
 │   ├── dev.ps1                # Windows 本地开发启动器
 │   ├── gen_demo.py            # 生成带封面的示例书库
@@ -235,8 +245,8 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 | 工作流 | 用途 | 产物 |
 |---|---|---|
-| `.github/workflows/docker-image.yml` | 构建双架构镜像并推送到 GHCR | `ghcr.io/<owner>/<repo>` |
-| `.github/workflows/image-tar.yml` | 构建单架构镜像并导出 tar | GitHub Actions Artifact，可下载后上传 NAS |
+| `.github/workflows/docker-image.yml` | 读取代码版本，构建双架构镜像并创建 Release | GHCR 镜像 + GitHub Release |
+| `.github/workflows/image-tar.yml` | 手动选择架构，构建单架构镜像并导出 tar | GitHub Actions Artifact，可下载后上传 NAS |
 
 > GitHub 只识别 `.github/workflows/*.yml` 下的工作流，所以 YAML **必须**放在 `.github/workflows/`，不能放在仓库根目录。
 >
@@ -246,55 +256,81 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 > - `context: .` → 仓库根目录
 > - `file: ./Dockerfile` → 仓库根目录的 `Dockerfile`
 
-### 工作流一：构建并推送 GHCR
+### 工作流一：构建 GHCR 镜像并创建 GitHub Release
 
 工作流文件：`.github/workflows/docker-image.yml`
 
 触发条件：**只有手动触发**（`workflow_dispatch`），push 代码或打标签都不会自动运行。
 
+版本号只有一个来源：`main.go` 里的
+
+```go
+var version = "1.0.0"
+```
+
+工作流会先读取这个值，然后用同一个版本号：
+
+1. 推送到 GHCR
+2. 创建 / 更新 GitHub Release
+3. 编译 Linux amd64 / arm64 二进制并作为 Release 附件上传
+
 手动触发步骤：
 
 1. 打开 GitHub 仓库的 **Actions** 页面
-2. 左侧选择 **Docker Image**
+2. 左侧选择 **Docker Image & Release**
 3. 点击右上角 **Run workflow**
 4. 选择要构建的分支（通常是 `main`）
 5. 点击 **Run workflow**
 
-流程：
+假设 `main.go` 里是 `1.0.0`，运行后会得到：
 
-1. `go vet ./...` + `go build ./...`
-2. QEMU + Buildx 构建 `linux/amd64` 和 `linux/arm64`
-3. 推送到 `ghcr.io/<owner>/<repo>`
-4. 使用 GitHub Actions 缓存加速后续构建
-
-手动运行在 `main` 分支时，镜像标签为：
+镜像标签：
 
 ```text
+1.0.0
+v1.0.0
+1.0
 main
 sha-xxxxxxx
 latest
 ```
 
-如果从版本标签运行（例如 `v1.2.3`），会额外生成 `v1.2.3`、`1.2.3`、`1.2`。
+Release：
 
-> GitHub 网页的「Run workflow」下拉框只列出分支；要基于标签构建，可以用 GitHub CLI：
+```text
+Tag: v1.0.0
+Assets:
+  libra-linux-amd64
+  libra-linux-arm64
+  SHA256SUMS
+```
+
+以后发新版本，只需要：
+
+1. 修改 `main.go` 里的 `var version = "1.1.0"`
+2. 提交并推送代码
+3. 手动运行一次 **Docker Image & Release**
+
+不需要在 workflow 里再填版本号。
+
+> 如果推送镜像时报权限错误，检查仓库 **Settings → Actions → General → Workflow permissions**，并确认工作流中的 `packages: write` 权限没有组织策略拦截。
 >
-> ```bash
-> git push origin v1.2.3
-> gh workflow run docker-image.yml --ref v1.2.3
-> ```
-
-如果推送镜像时报权限错误，检查仓库 **Settings → Actions → General → Workflow permissions**，并确认工作流中的 `packages: write` 权限没有组织策略拦截。
+> 创建 Release 需要 `contents: write`，当前 workflow 已经在 release job 里单独声明。
 
 <details>
 <summary>展开查看完整 workflow YAML</summary>
 
 ```yaml
-name: Docker Image
+name: Docker Image & Release
 
 # GitHub Actions 要求工作流放在 .github/workflows/ 下。
 # 工作流里的相对路径（go.mod、Dockerfile、context: .）都以仓库根目录为基准，
 # 不是以本文件所在的 .github/workflows/ 目录为基准。
+#
+# 版本号只有一个来源：main.go 里的 var version = "x.y.z"。
+# 手动运行后：
+#   1. 构建 linux/amd64 + linux/arm64 镜像并推送到 GHCR
+#   2. 用同一个版本号创建 / 更新 GitHub Release，并上传 Linux 二进制
 
 on:
   workflow_dispatch:
@@ -307,8 +343,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: Read version from main.go
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      major_minor: ${{ steps.read.outputs.major_minor }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: read
+        shell: bash
+        run: |
+          VERSION="$(sed -nE 's/^[[:space:]]*var[[:space:]]+version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' main.go | head -n1)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法从 main.go 读取 var version = \"x.y.z\""
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          MAJOR_MINOR="$(printf '%s' "$VERSION" | awk -F. 'NF >= 2 {print $1 "." $2}')"
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "major_minor=$MAJOR_MINOR"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION tag=$TAG major_minor=$MAJOR_MINOR"
+
   test:
     name: Go vet & build
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -329,7 +397,7 @@ jobs:
 
   docker:
     name: Build & push image
-    needs: test
+    needs: [version, test]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -364,15 +432,16 @@ jobs:
         with:
           images: ghcr.io/${{ steps.image.outputs.name }}
           tags: |
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.tag }}
+            type=raw,value=${{ needs.version.outputs.major_minor }},enable=${{ needs.version.outputs.major_minor != '' }}
             type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           labels: |
             org.opencontainers.image.title=Libra
             org.opencontainers.image.description=Lightweight self-hosted ebook library for NAS
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       - name: Build and push
@@ -385,10 +454,58 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ needs.version.outputs.version }}
             WITH_POPPLER=1
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    name: GitHub Release
+    needs: [version, test, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Linux binaries
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o dist/libra-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o dist/libra-linux-arm64 .
+          (cd dist && sha256sum libra-linux-amd64 libra-linux-arm64 > SHA256SUMS)
+          ls -lh dist
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: Libra ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          make_latest: true
+          overwrite_files: true
+          files: |
+            dist/libra-linux-amd64
+            dist/libra-linux-arm64
+            dist/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
 </details>
@@ -409,7 +526,7 @@ jobs:
    - `with_poppler`：`1` 包含 PDF 封面渲染，`0` 更小
 4. 运行完成后，在运行页底部 **Artifacts** 下载：
    ```text
-   libra-linux-amd64-dev.zip
+   libra-linux-amd64-1.0.0.zip
    ```
 5. 解压得到：
    ```text
@@ -431,12 +548,12 @@ jobs:
      -e LIBRA_DATA_DIR=/data \
      -e LIBRA_LIBRARY_ROOT=/books \
      -e LIBRA_ALLOW_REGISTER=false \
-     libra:dev
+     libra:1.0.0
    ```
 
 > `docker save` / tar 只包含一个架构。给 ARM NAS 下载时必须选 `arm64`；给 x86 NAS 选 `amd64`。
 >
-> 如果 `version` 填的不是 `dev`，启动命令最后的镜像名要相应改成 `libra:<version>`。
+> 如果 `version` 填的不是 `1.0.0`，启动命令最后的镜像名要相应改成 `libra:<version>`。
 >
 > GitHub Actions 的 Artifact 默认保留 7 天，过期后需要重新运行工作流。
 
@@ -461,9 +578,9 @@ on:
           - amd64
           - arm64
       version:
-        description: "镜像标签 / 版本号，例如 dev、1.0.0"
+        description: "镜像标签 / 版本号，例如 1.0.0、dev"
         required: true
-        default: dev
+        default: "1.0.0"
         type: string
       with_poppler:
         description: "是否包含 poppler（PDF 首页封面渲染）"
@@ -557,7 +674,11 @@ jobs:
 | 登录 | GET | `/api/featured` | 首页精选轮播 |
 | 登录 | GET | `/api/books/:id` | 书籍详情 |
 | 登录 | GET | `/download/:id` | 下载原文件 |
-| 登录 | GET | `/covers/*` | 书籍封面 / 书库封面 |
+| 登录 | GET | `/covers/*` | 书籍封面 / 书库封面原图 |
+| 登录 | GET | `/thumbs/*` | 400px 封面缩略图（按需生成并缓存） |
+| 登录 | GET | `/api/status` | 系统概览（版本、统计、数据目录） |
+| 管理员 | GET | `/api/admin/settings` | 读取注册开关 |
+| 管理员 | PUT | `/api/admin/settings` | 修改注册开关 |
 | 管理员 | POST | `/api/libraries` | 新建书库（自动扫描） |
 | 管理员 | PUT | `/api/libraries/:id` | 修改名称 / 目录 / 图标 |
 | 管理员 | DELETE | `/api/libraries/:id` | 删除书库 |

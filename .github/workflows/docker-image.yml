@@ -1,17 +1,16 @@
-name: Docker Image
+name: Docker Image & Release
 
 # GitHub Actions 要求工作流放在 .github/workflows/ 下。
 # 工作流里的相对路径（go.mod、Dockerfile、context: .）都以仓库根目录为基准，
 # 不是以本文件所在的 .github/workflows/ 目录为基准。
+#
+# 版本号只有一个来源：main.go 里的 var version = "x.y.z"。
+# 手动运行后：
+#   1. 构建 linux/amd64 + linux/arm64 镜像并推送到 GHCR
+#   2. 用同一个版本号创建 / 更新 GitHub Release，并上传 Linux 二进制
 
 on:
   workflow_dispatch:
-    inputs:
-      version:
-        description: "镜像标签 / 应用版本，例如 1.0.0"
-        required: true
-        default: "1.0.0"
-        type: string
 
 permissions:
   contents: read
@@ -21,8 +20,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  version:
+    name: Read version from main.go
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+      major_minor: ${{ steps.read.outputs.major_minor }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: read
+        shell: bash
+        run: |
+          VERSION="$(sed -nE 's/^[[:space:]]*var[[:space:]]+version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' main.go | head -n1)"
+          if [ -z "$VERSION" ]; then
+            echo "::error::无法从 main.go 读取 var version = \"x.y.z\""
+            exit 1
+          fi
+          TAG="v${VERSION}"
+          MAJOR_MINOR="$(printf '%s' "$VERSION" | awk -F. 'NF >= 2 {print $1 "." $2}')"
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "major_minor=$MAJOR_MINOR"
+          } >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION tag=$TAG major_minor=$MAJOR_MINOR"
+
   test:
     name: Go vet & build
+    needs: version
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -43,7 +74,7 @@ jobs:
 
   docker:
     name: Build & push image
-    needs: test
+    needs: [version, test]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -78,16 +109,16 @@ jobs:
         with:
           images: ghcr.io/${{ steps.image.outputs.name }}
           tags: |
-            type=raw,value=${{ inputs.version }}
+            type=raw,value=${{ needs.version.outputs.version }}
+            type=raw,value=${{ needs.version.outputs.tag }}
+            type=raw,value=${{ needs.version.outputs.major_minor }},enable=${{ needs.version.outputs.major_minor != '' }}
             type=ref,event=branch
-            type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           labels: |
             org.opencontainers.image.title=Libra
             org.opencontainers.image.description=Lightweight self-hosted ebook library for NAS
+            org.opencontainers.image.version=${{ needs.version.outputs.version }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
 
       - name: Build and push
@@ -100,7 +131,55 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ inputs.version }}
+            VERSION=${{ needs.version.outputs.version }}
             WITH_POPPLER=1
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  release:
+    name: GitHub Release
+    needs: [version, test, docker]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build Linux binaries
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o dist/libra-linux-amd64 .
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -trimpath \
+            -ldflags "-s -w -X main.version=${VERSION}" \
+            -o dist/libra-linux-arm64 .
+          (cd dist && sha256sum libra-linux-amd64 libra-linux-arm64 > SHA256SUMS)
+          ls -lh dist
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: Libra ${{ needs.version.outputs.tag }}
+          generate_release_notes: true
+          make_latest: true
+          overwrite_files: true
+          files: |
+            dist/libra-linux-amd64
+            dist/libra-linux-arm64
+            dist/SHA256SUMS
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

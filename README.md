@@ -24,6 +24,18 @@
 |---|---|
 | ![深色首页](docs/screenshots/home-dark.webp) | ![浅色首页](docs/screenshots/home-light.webp) |
 
+### 登录与注册
+
+登录页支持显示密码；管理员在后台关闭注册后，登录页会隐藏注册入口并给出提示。
+
+![登录页](docs/screenshots/login.webp)
+
+### 管理后台
+
+管理员在 `#/admin` 集中管理注册开关、书库、账号和系统信息。
+
+![管理后台](docs/screenshots/admin.webp)
+
 ### 管理员上传书库封面
 
 进入「管理后台」→「书库管理」→ 对应库的「编辑」→「书库封面」。支持上传 / 更换 / 恢复自动拼图，建议使用 16:9 横图。

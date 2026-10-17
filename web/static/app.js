@@ -328,6 +328,7 @@
     var routeName = parseHash().name;
     var onHome = routeName === 'home';
     var onAll = routeName === 'wall' && state.libraryId === -1;
+    var onAdmin = routeName === 'admin' || routeName === 'libraries' || routeName === 'users';
 
     // 内容没变就不重建 DOM —— 每次路由都重写 innerHTML 会让侧栏跟着闪一下。
     var sig = state.libraryId + '|' + routeName + '|' + total + '|' + currentTheme() + '|' +
@@ -368,7 +369,7 @@
 
     html += '<div class="side-sep"></div>';
     if (IS_ADMIN) {
-      html += '<a href="#/admin" class="side-item' + (routeName === 'admin' ? ' active' : '') + '">' +
+      html += '<a href="#/admin" class="side-item' + (onAdmin ? ' active' : '') + '">' +
         '<span class="side-icon neutral">' + iconHTML('builtin:shield') + '</span>' +
         '<span class="side-name">管理后台</span>' +
         '</a>';

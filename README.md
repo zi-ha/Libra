@@ -205,6 +205,14 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 工作流文件：`.github/workflows/docker-image.yml`
 
+> GitHub 只识别 `.github/workflows/*.yml` 下的工作流，所以这个 YAML **必须**放在 `.github/workflows/`，不能放在仓库根目录。
+>
+> 但 YAML 里的相对路径都以 **仓库根目录** 为基准，而不是以 YAML 文件所在的目录为基准：
+>
+> - `go-version-file: go.mod` → 仓库根目录的 `go.mod`
+> - `context: .` → 仓库根目录
+> - `file: ./Dockerfile` → 仓库根目录的 `Dockerfile`
+
 触发条件：
 
 - Push 到 `main`
@@ -220,6 +228,120 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 4. 使用 GitHub Actions 缓存加速后续构建
 
 如果推送镜像时报权限错误，检查仓库 **Settings → Actions → General → Workflow permissions**，并确认工作流中的 `packages: write` 权限没有组织策略拦截。
+
+<details>
+<summary>展开查看完整 workflow YAML</summary>
+
+```yaml
+name: Docker Image
+
+# GitHub Actions 要求工作流放在 .github/workflows/ 下。
+# 工作流里的相对路径（go.mod、Dockerfile、context: .）都以仓库根目录为基准，
+# 不是以本文件所在的 .github/workflows/ 目录为基准。
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Go vet & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+  docker:
+    name: Build & push image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GHCR 的镜像名必须是小写；github.repository 可能保留大小写
+      - name: Lowercase image name
+        id: image
+        run: echo "name=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ steps.image.outputs.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.title=Libra
+            org.opencontainers.image.description=Lightweight self-hosted ebook library for NAS
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            WITH_POPPLER=1
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+```
+
+</details>
 
 ---
 

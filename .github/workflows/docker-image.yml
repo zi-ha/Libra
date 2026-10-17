@@ -1,5 +1,9 @@
 name: Docker Image
 
+# GitHub Actions 要求工作流放在 .github/workflows/ 下。
+# 工作流里的相对路径（go.mod、Dockerfile、context: .）都以仓库根目录为基准，
+# 不是以本文件所在的 .github/workflows/ 目录为基准。
+
 on:
   push:
     branches: [main]
@@ -90,6 +94,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}

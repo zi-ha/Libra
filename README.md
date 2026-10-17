@@ -274,7 +274,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 触发条件：**只有手动触发**（`workflow_dispatch`），push 代码或打标签都不会自动运行。
 
-版本号只有一个来源：`main.go` 里的
+发布用的版本号只有一个来源：`main.go` 里的
 
 ```go
 var version = "1.0.0"

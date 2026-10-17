@@ -105,6 +105,11 @@ func (s *Store) Migrate() error {
 		`CREATE INDEX IF NOT EXISTS idx_books_title ON books(title)`,
 		`CREATE INDEX IF NOT EXISTS idx_books_author ON books(author)`,
 		`CREATE INDEX IF NOT EXISTS idx_books_format ON books(format)`,
+
+		`CREATE TABLE IF NOT EXISTS settings (
+			key   TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)`,
 	}
 
 	for i, stmt := range stmts {

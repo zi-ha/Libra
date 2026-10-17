@@ -628,7 +628,7 @@
              封面本身不是 2:3 时居中裁剪，绝不出现黑边白边 */
           '<a class="hero-thumb' + (bg ? '' : ' is-empty') + '" id="hero-thumb" href="#/book/' + cur.id + '"' +
             ' aria-label="' + esc(cur.title) + '">' +
-            '<img id="hero-thumb-img" alt=""' + (bg ? ' src="' + esc(bg) + '"' : '') + '>' +
+            '<img id="hero-thumb-img" alt=""' + (thumbSrc ? ' src="' + esc(thumbSrc) + '"' : '') + '>' +
           '</a>' +
           '<div class="hero-copy">' +
             '<h2 class="hero-title' + titleSizeClass(cur.title) + '" id="hero-title">' +
@@ -656,6 +656,7 @@
     state.featuredIdx = idx;
     var b = list[idx];
     var url = coverURL(b);
+    var thumbSrc = thumbURL(b);
 
     var bg = $('#hero-bg');
     if (bg) bg.style.backgroundImage = url ? 'url("' + url + '")' : '';
@@ -684,7 +685,7 @@
       thumb.setAttribute('aria-label', b.title);
       thumb.classList.toggle('is-empty', !url);
     }
-    if (thumbImg) thumbImg.src = url || '';
+    if (thumbImg) thumbImg.src = thumbSrc || '';
 
     $$('#hero-dots .hero-dot').forEach(function (n, i) {
       n.classList.toggle('on', i === idx);
@@ -799,8 +800,9 @@
 
     // 管理员上传过封面就直接用；没有才走自动拼贴
     if (lib.cover_url) {
+      var customCover = lib.cover_thumb_url || lib.cover_url;
       return '<a class="home-lib" href="#/lib/' + lib.id + '" title="' + esc(lib.name) + '">' +
-          '<span class="home-lib-single"><img src="' + esc(lib.cover_url) + '" alt=""' +
+          '<span class="home-lib-single"><img src="' + esc(customCover) + '" alt=""' +
             ' loading="lazy" decoding="async" onerror="this.remove()"></span>' +
           '<span class="home-lib-veil"></span>' +
           label +
@@ -851,7 +853,7 @@
     return Promise.all(pending.map(function (lib) {
       return api('/api/books?library_id=' + lib.id + '&page_size=8&sort=created&order=desc')
         .then(function (d) {
-          state.libCovers[lib.id] = (d.books || []).map(coverURL).filter(Boolean).slice(0, 3);
+          state.libCovers[lib.id] = (d.books || []).map(thumbURL).filter(Boolean).slice(0, 3);
         })
         .catch(function () { state.libCovers[lib.id] = []; });
     })).then(function () {
@@ -1447,7 +1449,7 @@
 
     return '<div class="lib-card rise">' +
         (lib.cover_url
-          ? '<div class="lib-cover-thumb"><img src="' + esc(lib.cover_url) + '" alt=""></div>'
+          ? '<div class="lib-cover-thumb"><img src="' + esc(lib.cover_thumb_url || lib.cover_url) + '" alt=""></div>'
           : '<div class="lib-icon" style="' + tintStyle(lib.name) + '">' + iconHTML(lib.icon) + '</div>') +
         '<div class="lib-body">' +
           '<div class="lib-name"><h2>' + esc(lib.name) + '</h2>' + stateTag + '</div>' +

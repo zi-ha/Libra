@@ -213,12 +213,15 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 > - `context: .` → 仓库根目录
 > - `file: ./Dockerfile` → 仓库根目录的 `Dockerfile`
 
-触发条件：
+触发条件：**只有手动触发**（`workflow_dispatch`），push 代码或打标签都不会自动运行。
 
-- Push 到 `main`
-- Push 标签 `v*`（例如 `v1.2.3`）
-- Pull Request（只构建，不推送）
-- 手动 `workflow_dispatch`
+手动触发步骤：
+
+1. 打开 GitHub 仓库的 **Actions** 页面
+2. 左侧选择 **Docker Image**
+3. 点击右上角 **Run workflow**
+4. 选择要构建的分支（通常是 `main`）
+5. 点击 **Run workflow**
 
 流程：
 
@@ -226,6 +229,23 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 2. QEMU + Buildx 构建 `linux/amd64` 和 `linux/arm64`
 3. 推送到 `ghcr.io/<owner>/<repo>`
 4. 使用 GitHub Actions 缓存加速后续构建
+
+手动运行在 `main` 分支时，镜像标签为：
+
+```text
+main
+sha-xxxxxxx
+latest
+```
+
+如果从版本标签运行（例如 `v1.2.3`），会额外生成 `v1.2.3`、`1.2.3`、`1.2`。
+
+> GitHub 网页的「Run workflow」下拉框只列出分支；要基于标签构建，可以用 GitHub CLI：
+>
+> ```bash
+> git push origin v1.2.3
+> gh workflow run docker-image.yml --ref v1.2.3
+> ```
 
 如果推送镜像时报权限错误，检查仓库 **Settings → Actions → General → Workflow permissions**，并确认工作流中的 `packages: write` 权限没有组织策略拦截。
 
@@ -240,11 +260,6 @@ name: Docker Image
 # 不是以本文件所在的 .github/workflows/ 目录为基准。
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
-  pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -300,7 +315,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -315,7 +329,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
@@ -331,7 +344,7 @@ jobs:
           context: .
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |

@@ -4,7 +4,7 @@
 #
 # 使用前：
 #   1. docker load -i libra-linux-amd64.tar
-#   2. docker images | grep libra       # 确认镜像名，默认 libra:dev
+#   2. docker images | grep libra       # 确认镜像名，默认 libra:1.0.0
 #   3. 修改 volumes 里的书籍目录
 #   4. 首次启动前给数据目录授权：
 #        mkdir -p data && sudo chown -R 1000:1000 data
@@ -17,8 +17,8 @@
 
 services:
   libra:
-    # 本地通过 docker load 导入的镜像；默认 version=dev
-    image: libra:dev
+    # 本地通过 docker load 导入的镜像；默认 version=1.0.0
+    image: libra:1.0.0
     container_name: libra
     restart: unless-stopped
 

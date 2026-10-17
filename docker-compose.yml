@@ -3,11 +3,11 @@ services:
     # 默认从本仓库源码构建；也可以直接使用 GHCR 预构建镜像：
     #   LIBRA_IMAGE=ghcr.io/<owner>/libra:latest docker compose pull
     #   LIBRA_IMAGE=ghcr.io/<owner>/libra:latest docker compose up -d --no-build
-    image: ${LIBRA_IMAGE:-libra:local}
+    image: ${LIBRA_IMAGE:-libra:1.0.0}
     build:
       context: .
       args:
-        VERSION: ${LIBRA_VERSION:-dev}
+        VERSION: ${LIBRA_VERSION:-1.0.0}
         # 不想要 PDF 首页渲染（可省约 15MB 镜像体积）时改成 "0"
         WITH_POPPLER: "${WITH_POPPLER:-1}"
     container_name: libra

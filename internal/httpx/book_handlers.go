@@ -212,8 +212,10 @@ func (s *Server) downloadBook(c *gin.Context) {
 // bookJSON 统一书籍对外结构。
 func bookJSON(b *store.Book) gin.H {
 	coverURL := ""
+	thumbURL := ""
 	if b.Cover != "" {
 		coverURL = "/covers/" + strconv.FormatInt(b.LibraryID, 10) + "/" + url.PathEscape(b.Cover)
+		thumbURL = "/thumbs/" + strconv.FormatInt(b.LibraryID, 10) + "/" + url.PathEscape(b.Cover)
 	}
 	title := b.Title
 	if strings.TrimSpace(title) == "" {
@@ -231,6 +233,7 @@ func bookJSON(b *store.Book) gin.H {
 		"filename":     b.Filename,
 		"has_cover":    b.Cover != "",
 		"cover_url":    coverURL,
+		"thumb_url":    thumbURL,
 		"created_at":   b.CreatedAt,
 		"updated_at":   b.UpdatedAt,
 	}

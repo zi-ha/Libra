@@ -254,9 +254,12 @@ func (s *Server) uploadLibraryCover(c *gin.Context) {
 		_ = os.Remove(filepath.Join(dir, lib.Cover))
 	}
 
+	escaped := url.PathEscape(name)
+	base := "/" + strconv.FormatInt(id, 10) + "/" + escaped
 	ok(c, gin.H{
-		"cover_url": "/covers/" + strconv.FormatInt(id, 10) + "/" + url.PathEscape(name),
-		"cover":     name,
+		"cover_url":       "/covers" + base,
+		"cover_thumb_url": "/thumbs" + base,
+		"cover":           name,
 	})
 }
 
@@ -343,7 +346,10 @@ func libraryJSON(lib *store.Library, st *scanner.Status) gin.H {
 		"scanning":        false,
 	}
 	if lib.Cover != "" {
-		out["cover_url"] = "/covers/" + strconv.FormatInt(lib.ID, 10) + "/" + url.PathEscape(lib.Cover)
+		escaped := url.PathEscape(lib.Cover)
+		base := "/" + strconv.FormatInt(lib.ID, 10) + "/" + escaped
+		out["cover_url"] = "/covers" + base
+		out["cover_thumb_url"] = "/thumbs" + base
 	}
 	if st != nil {
 		out["scanning"] = st.State == scanner.StateScanning

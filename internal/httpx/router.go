@@ -145,6 +145,7 @@ func NewRouter(cfg *config.Config, st *store.Store, sc *scanner.Scanner) (*gin.E
 
 	// 封面与上传图标（同样要求登录，避免资源被匿名抓取）
 	auth.GET("/covers/*filepath", serveFilesAuth(http.Dir(cfg.CoversDir), "/covers"))
+	auth.GET("/thumbs/*filepath", s.serveThumb)
 	auth.GET("/icons/*filepath", serveFilesAuth(http.Dir(cfg.IconsDir), "/icons"))
 
 	auth.GET("/api/status", s.status)

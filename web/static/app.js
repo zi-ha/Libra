@@ -532,15 +532,16 @@
   /* ------------------------------------------------------------------ 封面 */
 
   function coverURL(b) { return b && b.cover_url ? b.cover_url : ''; }
+  function thumbURL(b) { return b && b.thumb_url ? b.thumb_url : coverURL(b); }
 
   /* 封面底座：有图就放 img，没有就放带书名与主题色的占位块。
-     占位块的底色同样由书名哈希而来，所以"没有封面的书"排在一起也不至于
-     一片灰，但仍然是同一本书固定一个颜色。 */
+     默认使用 /thumbs/ 缩略图（400px），详情页传 { original: true } 用原图。 */
   function coverHTML(b, title, opts) {
     opts = opts || {};
     title = title || b.title || '';
-    var img = coverURL(b)
-      ? '<img src="' + esc(coverURL(b)) + '" alt=""' + (opts.eager ? '' : ' loading="lazy"') +
+    var url = opts.original ? coverURL(b) : thumbURL(b);
+    var img = url
+      ? '<img src="' + esc(url) + '" alt=""' + (opts.eager ? '' : ' loading="lazy"') +
         ' decoding="async" onerror="this.remove()">'
       : '';
     return '<div class="fallback" role="img" aria-label="' + esc(title) + '" style="' + tintStyle(title) + '">' +
@@ -602,6 +603,7 @@
     if (!list.length) return '';
     var cur = list[state.featuredIdx % list.length];
     var bg = coverURL(cur);
+    var thumbSrc = thumbURL(cur);
     var n = list.length;
 
     var dots = '';
@@ -1266,7 +1268,7 @@
           '<div class="detail-glow"' + glow + '></div>' +
           '<div class="detail-grid">' +
 
-            '<div class="detail-cover">' + coverHTML(b, b.title) + '</div>' +
+            '<div class="detail-cover">' + coverHTML(b, b.title, { original: true }) + '</div>' +
 
             '<div class="detail-main">' +
               '<h1 class="detail-title">' + esc(b.title) + '</h1>' +

@@ -175,7 +175,8 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 ```
 .
 ├── .github/workflows/
-│   └── docker-image.yml       # GitHub Actions：Go 检查 + 多架构镜像构建
+│   ├── docker-image.yml       # 手动触发：多架构镜像推送到 GHCR
+│   └── image-tar.yml          # 手动触发：单架构镜像导出 tar 作为 Artifact
 ├── docs/screenshots/          # README 截图
 ├── internal/
 │   ├── auth/                  # 密码策略、bcrypt、会话令牌
@@ -203,15 +204,24 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 ## GitHub Actions 与镜像发布
 
-工作流文件：`.github/workflows/docker-image.yml`
+目前有两个手动工作流：
 
-> GitHub 只识别 `.github/workflows/*.yml` 下的工作流，所以这个 YAML **必须**放在 `.github/workflows/`，不能放在仓库根目录。
+| 工作流 | 用途 | 产物 |
+|---|---|---|
+| `.github/workflows/docker-image.yml` | 构建双架构镜像并推送到 GHCR | `ghcr.io/<owner>/<repo>` |
+| `.github/workflows/image-tar.yml` | 构建单架构镜像并导出 tar | GitHub Actions Artifact，可下载后上传 NAS |
+
+> GitHub 只识别 `.github/workflows/*.yml` 下的工作流，所以 YAML **必须**放在 `.github/workflows/`，不能放在仓库根目录。
 >
 > 但 YAML 里的相对路径都以 **仓库根目录** 为基准，而不是以 YAML 文件所在的目录为基准：
 >
 > - `go-version-file: go.mod` → 仓库根目录的 `go.mod`
 > - `context: .` → 仓库根目录
 > - `file: ./Dockerfile` → 仓库根目录的 `Dockerfile`
+
+### 工作流一：构建并推送 GHCR
+
+工作流文件：`.github/workflows/docker-image.yml`
 
 触发条件：**只有手动触发**（`workflow_dispatch`），push 代码或打标签都不会自动运行。
 
@@ -352,6 +362,138 @@ jobs:
             WITH_POPPLER=1
           cache-from: type=gha
           cache-to: type=gha,mode=max
+```
+
+</details>
+
+### 工作流二：构建 tar 并上传为 Artifact
+
+工作流文件：`.github/workflows/image-tar.yml`
+
+适合不想在 NAS 上直接 `docker pull`、而是想从 GitHub 网页下载镜像 tar 再上传的场景。
+
+手动触发步骤：
+
+1. 打开 **Actions → Build Image Tarball**
+2. 点击 **Run workflow**
+3. 选择参数：
+   - `arch`：`amd64` 或 `arm64`（按 NAS CPU 选择）
+   - `version`：镜像标签，例如 `dev`、`1.0.0`
+   - `with_poppler`：`1` 包含 PDF 封面渲染，`0` 更小
+4. 运行完成后，在运行页底部 **Artifacts** 下载：
+   ```text
+   libra-linux-amd64-dev.zip
+   ```
+5. 解压得到：
+   ```text
+   libra-linux-amd64.tar
+   ```
+6. 上传到 NAS 后导入：
+   ```bash
+   docker load -i libra-linux-amd64.tar
+   docker images | grep libra
+   ```
+7. 启动：
+   ```bash
+   docker run -d \
+     --name libra \
+     --restart unless-stopped \
+     -p 8080:8080 \
+     -v /volume1/docker/libra/data:/data \
+     -v /volume1/books:/books:ro \
+     -e LIBRA_DATA_DIR=/data \
+     -e LIBRA_LIBRARY_ROOT=/books \
+     -e LIBRA_ALLOW_REGISTER=false \
+     libra:dev
+   ```
+
+> `docker save` / tar 只包含一个架构。给 ARM NAS 下载时必须选 `arm64`；给 x86 NAS 选 `amd64`。
+>
+> 如果 `version` 填的不是 `dev`，启动命令最后的镜像名要相应改成 `libra:<version>`。
+>
+> GitHub Actions 的 Artifact 默认保留 7 天，过期后需要重新运行工作流。
+
+<details>
+<summary>展开查看 image-tar.yml 完整内容</summary>
+
+```yaml
+name: Build Image Tarball
+
+# 手动构建单个架构的镜像，并导出为 docker load 可用的 tar。
+# 适用于：不想在 NAS 上直接 docker pull，而是从 GitHub Actions 下载 tar 再上传到 NAS。
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "目标架构（按 NAS CPU 选择）"
+        required: true
+        default: amd64
+        type: choice
+        options:
+          - amd64
+          - arm64
+      version:
+        description: "镜像标签 / 版本号，例如 dev、1.0.0"
+        required: true
+        default: dev
+        type: string
+      with_poppler:
+        description: "是否包含 poppler（PDF 首页封面渲染）"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "0"
+
+permissions:
+  contents: read
+
+jobs:
+  tarball:
+    name: Build linux/${{ inputs.arch }} tar
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image tarball
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/${{ inputs.arch }}
+          tags: libra:${{ inputs.version }}
+          # type=docker 会生成可以直接 docker load 的 tar；只支持单架构
+          outputs: type=docker,dest=libra-linux-${{ inputs.arch }}.tar
+          # 离线 tar 不需要 provenance / SBOM，关掉可避免额外清单
+          provenance: false
+          sbom: false
+          build-args: |
+            VERSION=${{ inputs.version }}
+            WITH_POPPLER=${{ inputs.with_poppler }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show tarball
+        run: ls -lh libra-linux-*.tar
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: libra-linux-${{ inputs.arch }}-${{ inputs.version }}
+          path: libra-linux-${{ inputs.arch }}.tar
+          if-no-files-found: error
+          retention-days: 7
 ```
 
 </details>

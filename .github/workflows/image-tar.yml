@@ -1,0 +1,77 @@
+name: Build Image Tarball
+
+# 手动构建单个架构的镜像，并导出为 docker load 可用的 tar。
+# 适用于：不想在 NAS 上直接 docker pull，而是从 GitHub Actions 下载 tar 再上传到 NAS。
+
+on:
+  workflow_dispatch:
+    inputs:
+      arch:
+        description: "目标架构（按 NAS CPU 选择）"
+        required: true
+        default: amd64
+        type: choice
+        options:
+          - amd64
+          - arm64
+      version:
+        description: "镜像标签 / 版本号，例如 dev、1.0.0"
+        required: true
+        default: dev
+        type: string
+      with_poppler:
+        description: "是否包含 poppler（PDF 首页封面渲染）"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "0"
+
+permissions:
+  contents: read
+
+jobs:
+  tarball:
+    name: Build linux/${{ inputs.arch }} tar
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image tarball
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/${{ inputs.arch }}
+          tags: libra:${{ inputs.version }}
+          # type=docker 会生成可以直接 docker load 的 tar；只支持单架构
+          outputs: type=docker,dest=libra-linux-${{ inputs.arch }}.tar
+          # 离线 tar 不需要 provenance / SBOM，关掉可避免额外清单
+          provenance: false
+          sbom: false
+          build-args: |
+            VERSION=${{ inputs.version }}
+            WITH_POPPLER=${{ inputs.with_poppler }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Show tarball
+        run: ls -lh libra-linux-*.tar
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: libra-linux-${{ inputs.arch }}-${{ inputs.version }}
+          path: libra-linux-${{ inputs.arch }}.tar
+          if-no-files-found: error
+          retention-days: 7

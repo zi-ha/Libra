@@ -14,12 +14,12 @@ import (
 	"libra/internal/store"
 )
 
-// ---------- 媒体库 CRUD ----------
+// ---------- 书库 CRUD ----------
 
 func (s *Server) listLibraries(c *gin.Context) {
 	libs, err := s.st.ListLibraries()
 	if err != nil {
-		failErr(c, 500, "读取媒体库失败", err)
+		failErr(c, 500, "读取书库失败", err)
 		return
 	}
 
@@ -37,7 +37,7 @@ func (s *Server) getLibrary(c *gin.Context) {
 	}
 	lib, err := s.st.GetLibrary(id)
 	if err != nil {
-		fail(c, 404, "媒体库不存在")
+		fail(c, 404, "书库不存在")
 		return
 	}
 	ok(c, libraryJSON(lib, s.sc.Status(id)))
@@ -56,7 +56,7 @@ func (s *Server) createLibrary(c *gin.Context) {
 	req.Name = strings.TrimSpace(req.Name)
 	req.Path = strings.TrimSpace(req.Path)
 	if req.Name == "" {
-		fail(c, 400, "请填写媒体库名称")
+		fail(c, 400, "请填写书库名称")
 		return
 	}
 	if req.Path == "" {
@@ -80,7 +80,7 @@ func (s *Server) createLibrary(c *gin.Context) {
 		failErr(c, 500, "校验目录失败", err)
 		return
 	} else if exists {
-		fail(c, 409, "该目录已经被其它媒体库使用")
+		fail(c, 409, "该目录已经被其它书库使用")
 		return
 	}
 
@@ -109,7 +109,7 @@ func (s *Server) updateLibrary(c *gin.Context) {
 	}
 	old, err := s.st.GetLibrary(id)
 	if err != nil {
-		fail(c, 404, "媒体库不存在")
+		fail(c, 404, "书库不存在")
 		return
 	}
 
@@ -141,14 +141,14 @@ func (s *Server) updateLibrary(c *gin.Context) {
 			failErr(c, 500, "校验目录失败", err)
 			return
 		} else if exists {
-			fail(c, 409, "该目录已经被其它媒体库使用")
+			fail(c, 409, "该目录已经被其它书库使用")
 			return
 		}
 		req.Path = &p
 	}
 
 	if s.sc.IsRunning(id) && req.Path != nil && *req.Path != old.Path {
-		fail(c, 409, "该媒体库正在扫描中，请稍后再修改目录")
+		fail(c, 409, "该书库正在扫描中，请稍后再修改目录")
 		return
 	}
 
@@ -180,29 +180,29 @@ func (s *Server) deleteLibrary(c *gin.Context) {
 		return
 	}
 	if s.sc.IsRunning(id) {
-		fail(c, 409, "该媒体库正在扫描中，请等待扫描结束后再删除")
+		fail(c, 409, "该书库正在扫描中，请等待扫描结束后再删除")
 		return
 	}
 	lib, err := s.st.GetLibrary(id)
 	if err != nil {
-		fail(c, 404, "媒体库不存在")
+		fail(c, 404, "书库不存在")
 		return
 	}
 	// 先删记录（外键级联），再删封面文件。
 	if err := s.st.DeleteLibrary(id); err != nil {
-		failErr(c, 500, "删除媒体库失败", err)
+		failErr(c, 500, "删除书库失败", err)
 		return
 	}
 	if err := s.sc.RemoveLibraryCovers(id); err != nil {
 		failErr(c, 500, "清理封面文件失败", err)
 		return
 	}
-	ok(c, gin.H{"message": "媒体库「" + lib.Name + "」及其书籍记录、封面已全部清除"})
+	ok(c, gin.H{"message": "书库「" + lib.Name + "」及其书籍记录、封面已全部清除"})
 }
 
-// ---------- 媒体库封面 ----------
+// ---------- 书库封面 ----------
 
-// uploadLibraryCover 保存管理员上传的媒体库封面。
+// uploadLibraryCover 保存管理员上传的书库封面。
 // 文件放在该库的封面目录里，用 _library- 前缀与书籍封面区分，
 // 扫描清理书籍封面时不会误删。
 func (s *Server) uploadLibraryCover(c *gin.Context) {
@@ -212,7 +212,7 @@ func (s *Server) uploadLibraryCover(c *gin.Context) {
 	}
 	lib, err := s.st.GetLibrary(id)
 	if err != nil {
-		fail(c, 404, "媒体库不存在")
+		fail(c, 404, "书库不存在")
 		return
 	}
 
@@ -246,7 +246,7 @@ func (s *Server) uploadLibraryCover(c *gin.Context) {
 	}
 	if err := s.st.SetLibraryCover(id, name); err != nil {
 		_ = os.Remove(dst)
-		failErr(c, 500, "更新媒体库封面失败", err)
+		failErr(c, 500, "更新书库封面失败", err)
 		return
 	}
 	// 新封面写入成功后再删旧文件
@@ -271,14 +271,14 @@ func (s *Server) deleteLibraryCover(c *gin.Context) {
 	}
 	lib, err := s.st.GetLibrary(id)
 	if err != nil {
-		fail(c, 404, "媒体库不存在")
+		fail(c, 404, "书库不存在")
 		return
 	}
 	if lib.Cover != "" {
 		_ = os.Remove(filepath.Join(s.cfg.LibraryCoversDir(id), lib.Cover))
 	}
 	if err := s.st.SetLibraryCover(id, ""); err != nil {
-		failErr(c, 500, "清除媒体库封面失败", err)
+		failErr(c, 500, "清除书库封面失败", err)
 		return
 	}
 	ok(c, gin.H{"message": "已恢复自动封面"})
@@ -296,7 +296,7 @@ func (s *Server) scanLibrary(c *gin.Context) {
 			fail(c, 409, err.Error())
 			return
 		}
-		fail(c, 404, "媒体库不存在: "+err.Error())
+		fail(c, 404, "书库不存在: "+err.Error())
 		return
 	}
 	ok(c, gin.H{"message": "扫描已启动", "status": s.sc.Status(id)})
@@ -312,7 +312,7 @@ func (s *Server) scanStatus(c *gin.Context) {
 		// 没有内存中的进度，就回落到数据库里记录的最后一次结果。
 		lib, err := s.st.GetLibrary(id)
 		if err != nil {
-			fail(c, 404, "媒体库不存在")
+			fail(c, 404, "书库不存在")
 			return
 		}
 		state := lib.LastScanState

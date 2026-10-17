@@ -14,7 +14,7 @@ import (
 	"libra/internal/store"
 )
 
-// listBooks 分页列出书籍，支持按媒体库、关键字、格式过滤与排序。
+// listBooks 分页列出书籍，支持按书库、关键字、格式过滤与排序。
 func (s *Server) listBooks(c *gin.Context) {
 	page := queryInt(c, "page", 1)
 	pageSize := queryInt(c, "page_size", 60)

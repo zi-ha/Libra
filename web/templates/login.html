@@ -65,14 +65,20 @@
 
   <main class="auth-main">
     <div class="auth-box">
+      <a class="auth-mini-brand" href="/login" aria-label="Libra">
+        <span class="brand-mark"><span class="seal-char">书</span></span>
+        <span class="brand-name">Libra<span class="brand-sub">私人书库</span></span>
+      </a>
 
       <h1 class="auth-title">欢迎回来</h1>
       <p class="auth-desc">登录后即可浏览封面墙、搜索和下载电子书。</p>
 
       <div class="tabs" role="tablist">
         <button id="tab-login" type="button" role="tab" aria-selected="true">登录</button>
-        <button id="tab-register" type="button" role="tab" aria-selected="false">注册</button>
+        <button id="tab-register" type="button" role="tab" aria-selected="false">注册账号</button>
       </div>
+
+      <p id="register-closed" class="auth-closed u-hidden">自助注册已关闭，请联系管理员开通账号。</p>
 
       <form id="login-form" class="auth-form" novalidate>
         <div id="setup-tip" class="alert info u-hidden" style="margin-bottom:18px"></div>
@@ -80,13 +86,16 @@
         <div class="field">
           <label for="username">用户名</label>
           <input id="username" name="username" type="text" class="input" autocomplete="username"
-                 required placeholder="请输入用户名">
+                 required autofocus placeholder="请输入用户名">
         </div>
 
         <div class="field">
           <label for="password">密码</label>
-          <input id="password" name="password" type="password" class="input" autocomplete="current-password"
-                 required placeholder="请输入密码">
+          <div class="input-with-action">
+            <input id="password" name="password" type="password" class="input" autocomplete="current-password"
+                   required placeholder="请输入密码">
+            <button id="pwd-toggle" type="button" class="input-action" aria-label="显示密码" aria-pressed="false">显示</button>
+          </div>
           <div id="pwd-hint" class="hint u-hidden">至少 8 位，且需包含字母、数字、符号中的至少两类。</div>
         </div>
 

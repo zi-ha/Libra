@@ -1,4 +1,4 @@
-// Package scanner 负责递归扫描媒体库目录、提取书籍元数据与封面。
+// Package scanner 负责递归扫描书库目录、提取书籍元数据与封面。
 package scanner
 
 import (
@@ -45,8 +45,8 @@ const (
 	StateError    = "error"
 )
 
-// ErrAlreadyRunning 表示该媒体库正在扫描中。
-var ErrAlreadyRunning = errors.New("该媒体库正在扫描中")
+// ErrAlreadyRunning 表示该书库正在扫描中。
+var ErrAlreadyRunning = errors.New("该书库正在扫描中")
 
 // Status 是暴露给前端的扫描进度快照。
 type Status struct {
@@ -146,7 +146,7 @@ func (t *tracker) snapshot() Status {
 	return st
 }
 
-// Scanner 调度所有媒体库的扫描任务。
+// Scanner 调度所有书库的扫描任务。
 type Scanner struct {
 	store *store.Store
 	cfg   *config.Config
@@ -170,7 +170,7 @@ func New(st *store.Store, cfg *config.Config) *Scanner {
 	}
 }
 
-// Status 返回某个媒体库最近一次扫描的进度快照。
+// Status 返回某个书库最近一次扫描的进度快照。
 func (s *Scanner) Status(libraryID int64) *Status {
 	s.mu.Lock()
 	tk := s.statuses[libraryID]
@@ -182,7 +182,7 @@ func (s *Scanner) Status(libraryID int64) *Status {
 	return &st
 }
 
-// IsRunning 判断某个媒体库是否正在扫描。
+// IsRunning 判断某个书库是否正在扫描。
 func (s *Scanner) IsRunning(libraryID int64) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -213,14 +213,14 @@ func (s *Scanner) Start(libraryID int64) error {
 			s.mu.Unlock()
 		}()
 		if err := s.run(lib, tk); err != nil {
-			log.Printf("[scan] 媒体库 #%d (%s) 扫描失败: %v", lib.ID, lib.Name, err)
+			log.Printf("[scan] 书库 #%d (%s) 扫描失败: %v", lib.ID, lib.Name, err)
 			tk.addError(err.Error())
 			tk.finish(StateError, err.Error())
 			_ = s.store.MarkLibraryScan(lib.ID, StateError)
 			return
 		}
 		st := tk.snapshot()
-		log.Printf("[scan] 媒体库 #%d (%s) 完成: 新增 %d / 更新 %d / 跳过 %d / 移除 %d / 失败 %d，耗时 %.1fs",
+		log.Printf("[scan] 书库 #%d (%s) 完成: 新增 %d / 更新 %d / 跳过 %d / 移除 %d / 失败 %d，耗时 %.1fs",
 			lib.ID, lib.Name, st.Added, st.Updated, st.Skipped, st.Removed, st.Failed, st.ElapsedSec)
 		tk.finish(StateDone, "")
 		_ = s.store.MarkLibraryScan(lib.ID, StateDone)
@@ -229,27 +229,27 @@ func (s *Scanner) Start(libraryID int64) error {
 	return nil
 }
 
-// StartAll 依次扫描所有媒体库（启动时自动扫描用）。
+// StartAll 依次扫描所有书库（启动时自动扫描用）。
 func (s *Scanner) StartAll() {
 	libs, err := s.store.ListLibraries()
 	if err != nil {
-		log.Printf("[scan] 读取媒体库列表失败: %v", err)
+		log.Printf("[scan] 读取书库列表失败: %v", err)
 		return
 	}
 	for _, lib := range libs {
 		if err := s.Start(lib.ID); err != nil && !errors.Is(err, ErrAlreadyRunning) {
-			log.Printf("[scan] 启动媒体库 #%d 扫描失败: %v", lib.ID, err)
+			log.Printf("[scan] 启动书库 #%d 扫描失败: %v", lib.ID, err)
 		}
 	}
 }
 
-// RemoveLibraryCovers 删除某个媒体库的全部封面目录（删除媒体库时调用）。
+// RemoveLibraryCovers 删除某个书库的全部封面目录（删除书库时调用）。
 func (s *Scanner) RemoveLibraryCovers(libraryID int64) error {
 	return s.RemoveLibraryCoversExcept(libraryID, "")
 }
 
 // RemoveLibraryCoversExcept 清空封面目录，但保留 keep 指定的那个文件。
-// 改媒体库目录时会调用它，避免把管理员上传的媒体库封面一起删掉。
+// 改书库目录时会调用它，避免把管理员上传的书库封面一起删掉。
 func (s *Scanner) RemoveLibraryCoversExcept(libraryID int64, keep string) error {
 	dir := s.cfg.LibraryCoversDir(libraryID)
 	entries, err := os.ReadDir(dir)

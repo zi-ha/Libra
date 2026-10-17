@@ -6,6 +6,12 @@ name: Docker Image
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: "镜像标签 / 应用版本，例如 1.0.0"
+        required: true
+        default: "1.0.0"
+        type: string
 
 permissions:
   contents: read
@@ -72,6 +78,7 @@ jobs:
         with:
           images: ghcr.io/${{ steps.image.outputs.name }}
           tags: |
+            type=raw,value=${{ inputs.version }}
             type=ref,event=branch
             type=ref,event=tag
             type=semver,pattern={{version}}
@@ -93,7 +100,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ steps.meta.outputs.version }}
+            VERSION=${{ inputs.version }}
             WITH_POPPLER=1
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// Library 是一个媒体库。每个媒体库对应 NAS 上的一个本地目录。
+// Library 是一个书库。每个书库对应 NAS 上的一个本地目录。
 type Library struct {
 	ID            int64     `json:"id"`
 	Name          string    `json:"name"`
@@ -46,12 +46,12 @@ func scanLibrary(row interface{ Scan(...any) error }) (*Library, error) {
 	return &l, nil
 }
 
-// CreateLibrary 新建媒体库。
+// CreateLibrary 新建书库。
 func (s *Store) CreateLibrary(name, path, icon string) (*Library, error) {
 	name = strings.TrimSpace(name)
 	path = strings.TrimSpace(path)
 	if name == "" {
-		return nil, errors.New("媒体库名称不能为空")
+		return nil, errors.New("书库名称不能为空")
 	}
 	if path == "" {
 		return nil, errors.New("目录路径不能为空")
@@ -66,7 +66,7 @@ func (s *Store) CreateLibrary(name, path, icon string) (*Library, error) {
 	)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return nil, errors.New("该目录已经被其它媒体库使用")
+			return nil, errors.New("该目录已经被其它书库使用")
 		}
 		return nil, err
 	}
@@ -81,7 +81,7 @@ func (s *Store) UpdateLibrary(id int64, name, path, icon *string) (*Library, err
 	if name != nil {
 		v := strings.TrimSpace(*name)
 		if v == "" {
-			return nil, errors.New("媒体库名称不能为空")
+			return nil, errors.New("书库名称不能为空")
 		}
 		sets = append(sets, "name = ?")
 		args = append(args, v)
@@ -108,7 +108,7 @@ func (s *Store) UpdateLibrary(id int64, name, path, icon *string) (*Library, err
 	res, err := s.db.Exec(`UPDATE libraries SET `+strings.Join(sets, ", ")+` WHERE id = ?`, args...)
 	if err != nil {
 		if isUniqueViolation(err) {
-			return nil, errors.New("该目录已经被其它媒体库使用")
+			return nil, errors.New("该目录已经被其它书库使用")
 		}
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (s *Store) UpdateLibrary(id int64, name, path, icon *string) (*Library, err
 	return s.GetLibrary(id)
 }
 
-// SetLibraryCover 记录媒体库自定义封面的文件名（空字符串表示恢复自动封面）。
+// SetLibraryCover 记录书库自定义封面的文件名（空字符串表示恢复自动封面）。
 func (s *Store) SetLibraryCover(id int64, cover string) error {
 	res, err := s.db.Exec(`UPDATE libraries SET cover = ?, updated_at = ? WHERE id = ?`,
 		strings.TrimSpace(cover), now(), id)
@@ -131,7 +131,7 @@ func (s *Store) SetLibraryCover(id int64, cover string) error {
 	return nil
 }
 
-// DeleteLibrary 删除媒体库。书籍记录通过外键级联删除，调用方负责清理封面文件。
+// DeleteLibrary 删除书库。书籍记录通过外键级联删除，调用方负责清理封面文件。
 func (s *Store) DeleteLibrary(id int64) error {
 	res, err := s.db.Exec(`DELETE FROM libraries WHERE id = ?`, id)
 	if err != nil {
@@ -148,7 +148,7 @@ func (s *Store) GetLibrary(id int64) (*Library, error) {
 	return scanLibrary(s.db.QueryRow(`SELECT `+libraryColumns+` FROM libraries l WHERE l.id = ?`, id))
 }
 
-// ListLibraries 返回全部媒体库，附带书籍数量统计。
+// ListLibraries 返回全部书库，附带书籍数量统计。
 func (s *Store) ListLibraries() ([]Library, error) {
 	rows, err := s.db.Query(`SELECT ` + libraryColumns + ` FROM libraries l ORDER BY l.id ASC`)
 	if err != nil {
@@ -167,7 +167,7 @@ func (s *Store) ListLibraries() ([]Library, error) {
 	return out, rows.Err()
 }
 
-// HasLibraryWithPath 判断目录是否已被某个媒体库占用（可排除指定 ID）。
+// HasLibraryWithPath 判断目录是否已被某个书库占用（可排除指定 ID）。
 func (s *Store) HasLibraryWithPath(path string, excludeID int64) (bool, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM libraries WHERE path = ? AND id <> ?`, path, excludeID).Scan(&n)

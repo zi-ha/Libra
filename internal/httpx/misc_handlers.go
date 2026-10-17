@@ -41,7 +41,7 @@ func (s *Server) status(c *gin.Context) {
 	}
 	libs, err := s.st.ListLibraries()
 	if err != nil {
-		failErr(c, 500, "读取媒体库失败", err)
+		failErr(c, 500, "读取书库失败", err)
 		return
 	}
 
@@ -132,7 +132,7 @@ func (s *Server) uploadIcon(c *gin.Context) {
 	ok(c, gin.H{"id": "upload:" + name, "name": name, "url": "/icons/" + name})
 }
 
-// browse 列出目录下的子目录，用于在 Web 上挑选媒体库路径。
+// browse 列出目录下的子目录，用于在 Web 上挑选书库路径。
 func (s *Server) browse(c *gin.Context) {
 	target := strings.TrimSpace(c.Query("path"))
 	root := s.cfg.LibraryRoot

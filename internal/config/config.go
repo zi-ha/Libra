@@ -24,7 +24,7 @@ type Config struct {
 	CoversDir string
 	IconsDir  string
 
-	// LibraryRoot 是"浏览目录"接口的根，用于在 Web 上挑选媒体库目录。
+	// LibraryRoot 是"浏览目录"接口的根，用于在 Web 上挑选书库目录。
 	// 为空表示不限制（允许浏览整个文件系统）。
 	LibraryRoot string
 
@@ -32,7 +32,7 @@ type Config struct {
 	ScanConcurrency int
 	// CoverWidth 是 PDF 首页渲染的目标宽度（像素），也是封面图的缩放上限。
 	CoverWidth int
-	// ScanOnStart 为真时，进程启动后自动对所有媒体库做一次扫描。
+	// ScanOnStart 为真时，进程启动后自动对所有书库做一次扫描。
 	ScanOnStart bool
 	// SessionTTL 是登录会话有效期。
 	SessionTTL time.Duration
@@ -114,7 +114,7 @@ func (c *Config) EnsureDirs() error {
 	return nil
 }
 
-// LibraryCoversDir 返回某个媒体库的封面目录。
+// LibraryCoversDir 返回某个书库的封面目录。
 func (c *Config) LibraryCoversDir(libraryID int64) string {
 	return filepath.Join(c.CoversDir, strconv.FormatInt(libraryID, 10))
 }

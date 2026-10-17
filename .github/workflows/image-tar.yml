@@ -15,9 +15,9 @@ on:
           - amd64
           - arm64
       version:
-        description: "镜像标签 / 版本号，例如 dev、1.0.0"
+        description: "镜像标签 / 版本号，例如 1.0.0、dev"
         required: true
-        default: dev
+        default: "1.0.0"
         type: string
       with_poppler:
         description: "是否包含 poppler（PDF 首页封面渲染）"

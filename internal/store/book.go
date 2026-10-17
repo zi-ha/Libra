@@ -54,7 +54,7 @@ func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 
 // BookQuery 是书籍列表的查询条件。
 type BookQuery struct {
-	LibraryID int64  // 0 表示全部媒体库
+	LibraryID int64  // 0 表示全部书库
 	Search    string // 匹配书名或作者
 	Format    string // "" 全部 / epub / pdf
 	Sort      string // title / author / created / size / updated
@@ -166,7 +166,7 @@ type BookStat struct {
 	TotalSize int64 `json:"total_size"`
 }
 
-// Stats 返回整体（或某个媒体库）的统计信息。
+// Stats 返回整体（或某个书库）的统计信息。
 func (s *Store) Stats(libraryID int64) (BookStat, error) {
 	var st BookStat
 	where := ""
@@ -193,7 +193,7 @@ type BookIndexRow struct {
 	CoverState string
 }
 
-// IndexByLibrary 返回某个媒体库已有书籍的增量比对索引，以 path 为键。
+// IndexByLibrary 返回某个书库已有书籍的增量比对索引，以 path 为键。
 func (s *Store) IndexByLibrary(libraryID int64) (map[string]BookIndexRow, error) {
 	rows, err := s.db.Query(
 		`SELECT path, mtime, size, cover, format, cover_state FROM books WHERE library_id = ?`, libraryID)
@@ -261,13 +261,13 @@ func (s *Store) DeleteBook(id int64) error {
 	return err
 }
 
-// DeleteBooksByLibrary 清空某个媒体库下的所有书籍记录。
+// DeleteBooksByLibrary 清空某个书库下的所有书籍记录。
 func (s *Store) DeleteBooksByLibrary(libraryID int64) error {
 	_, err := s.db.Exec(`DELETE FROM books WHERE library_id = ?`, libraryID)
 	return err
 }
 
-// DeleteBooksExcept 删除某个媒体库下不在 keep 集合中的记录（清理磁盘上已消失的文件）。
+// DeleteBooksExcept 删除某个书库下不在 keep 集合中的记录（清理磁盘上已消失的文件）。
 // keep 为路径集合。返回被删除的记录数，以及需要一并删除的封面文件名。
 func (s *Store) DeleteBooksExcept(libraryID int64, keep map[string]struct{}) (int, []string, error) {
 	rows, err := s.db.Query(`SELECT id, path, cover FROM books WHERE library_id = ?`, libraryID)

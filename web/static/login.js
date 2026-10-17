@@ -15,12 +15,16 @@
     username: document.getElementById('username'),
     password: document.getElementById('password'),
     password2: document.getElementById('password2'),
+    pwdToggle: document.getElementById('pwd-toggle'),
     confirmWrap: document.getElementById('confirm-wrap'),
     error: document.getElementById('login-error'),
     submit: document.getElementById('submit-btn'),
     tip: document.getElementById('setup-tip'),
-    pwdHint: document.getElementById('pwd-hint')
+    pwdHint: document.getElementById('pwd-hint'),
+    registerClosed: document.getElementById('register-closed')
   };
+
+  var passwordVisible = false;
 
   function esc(s) {
     return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -38,6 +42,16 @@
     el.error.textContent = '';
   }
 
+  function setPasswordVisible(next) {
+    passwordVisible = !!next;
+    var type = passwordVisible ? 'text' : 'password';
+    el.password.type = type;
+    el.password2.type = type;
+    el.pwdToggle.textContent = passwordVisible ? '隐藏' : '显示';
+    el.pwdToggle.setAttribute('aria-pressed', passwordVisible ? 'true' : 'false');
+    el.pwdToggle.setAttribute('aria-label', passwordVisible ? '隐藏密码' : '显示密码');
+  }
+
   function setMode(next) {
     mode = next;
     clearError();
@@ -51,11 +65,13 @@
     el.password2.required = !login;
     el.password.autocomplete = login ? 'current-password' : 'new-password';
     el.submit.textContent = login ? '登录' : '创建账号';
+    setPasswordVisible(false);
   }
 
   function applyMeta(meta) {
     allowRegister = !!meta.allow_register;
     el.tabRegister.classList.toggle('u-hidden', !allowRegister);
+    el.registerClosed.classList.toggle('u-hidden', allowRegister || !!meta.needs_setup);
 
     if (meta.needs_setup) {
       el.tip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" ' +
@@ -71,6 +87,7 @@
 
   el.tabLogin.addEventListener('click', function () { setMode('login'); });
   el.tabRegister.addEventListener('click', function () { setMode('register'); });
+  el.pwdToggle.addEventListener('click', function () { setPasswordVisible(!passwordVisible); });
 
   el.form.addEventListener('submit', function (ev) {
     ev.preventDefault();

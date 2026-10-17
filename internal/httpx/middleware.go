@@ -47,7 +47,7 @@ func (s *Server) user(c *gin.Context) *store.User {
 // RoleAdmin / RoleUser 见 store 包。
 //
 // 权限模型：
-//   - 管理员（admin）：媒体库增删改、触发扫描、上传图标、浏览服务器目录、管理账号。
+//   - 管理员（admin）：书库增删改、触发扫描、上传图标、浏览服务器目录、管理账号。
 //   - 普通成员（user）：只读 —— 浏览封面墙、搜索、查看详情、下载原文件。
 //
 // adminOnly 必须挂在 requireAuth 之后：它假定 ctxUserKey 已被设置。

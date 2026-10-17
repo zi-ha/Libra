@@ -1,5 +1,5 @@
 # Libra 常用构建/部署命令
-VERSION ?= dev
+VERSION ?= 1.0.0
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
 .PHONY: help tidy fmt vet test build run linux-arm64 linux-amd64 docker samples clean

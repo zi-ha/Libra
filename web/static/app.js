@@ -3,7 +3,7 @@
  * 结构分四层，按出现顺序：
  *   1. 工具层：图标、转义、格式化、主题与密度
  *   2. 数据层：接口调用、状态、扫描轮询
- *   3. 视图层：侧栏 / 精选横幅 / 媒体库宫格 / 封面墙 / 详情 / 管理页
+ *   3. 视图层：侧栏 / 精选横幅 / 书库宫格 / 封面墙 / 详情 / 管理页
  *   4. 交互层：弹窗、表单、目录选择、路由、初始化
  *
  * 视图层的两条硬规则（前几轮改版踩出来的）：
@@ -153,7 +153,7 @@
   }
 
   /* 把任意字符串映射成一个稳定的色相（0~359）。
-     媒体库图标块、无封面占位的底色都从这里取色：同一座库、同一本书
+     书库图标块、无封面占位的底色都从这里取色：同一座库、同一本书
      每次刷新颜色都一样，但整体看上去又是五颜六色的。 */
   function hashHue(s) {
     s = String(s || '');
@@ -288,7 +288,7 @@
 
   var state = {
     libraries: [],
-    libraryId: 0,       // 0 = 首页 / -1 = 全部书籍 / >0 = 某个媒体库
+    libraryId: 0,       // 0 = 首页 / -1 = 全部书籍 / >0 = 某个书库
     q: '',
     format: '',
     sort: 'title:asc',
@@ -306,7 +306,7 @@
     featured: null,     // 精选横幅数据（每会话取一次，扫描结束后失效）
     featuredIdx: 0,
     heroTimer: null,
-    libCovers: {},      // 媒体库宫格拼贴：libraryId -> [封面 URL]
+    libCovers: {},      // 书库宫格拼贴：libraryId -> [封面 URL]
     lastElapsed: 0,
     sentinel: null
   };
@@ -348,10 +348,10 @@
         '<span class="side-name">全部书籍</span>' +
         '<span class="side-count">' + total + '</span>' +
       '</a>' +
-      '<div class="side-fold">媒体库</div>';
+      '<div class="side-fold">书库</div>';
 
     if (!state.libraries.length) {
-      html += '<div style="padding:8px 10px;font-size:12px;color:var(--text-3)">还没有媒体库</div>';
+      html += '<div style="padding:8px 10px;font-size:12px;color:var(--text-3)">还没有书库</div>';
     }
 
     state.libraries.forEach(function (lib) {
@@ -366,16 +366,18 @@
         '</a>';
     });
 
-    html += '<div class="side-sep"></div>' +
-      '<a href="#/libraries" class="side-item' + (routeName === 'libraries' ? ' active' : '') + '">' +
-      '<span class="side-icon neutral">' + iconHTML('builtin:folder') + '</span>' +
-      '<span class="side-name">' + (IS_ADMIN ? '管理媒体库' : '媒体库列表') + '</span>' +
-      '</a>' +
-      (IS_ADMIN
-        ? '<a href="#/users" class="side-item' + (routeName === 'users' ? ' active' : '') + '">' +
-          '<span class="side-icon neutral">' + iconHTML('builtin:user') + '</span>' +
-          '<span class="side-name">账号</span></a>'
-        : '');
+    html += '<div class="side-sep"></div>';
+    if (IS_ADMIN) {
+      html += '<a href="#/admin" class="side-item' + (routeName === 'admin' ? ' active' : '') + '">' +
+        '<span class="side-icon neutral">' + iconHTML('builtin:shield') + '</span>' +
+        '<span class="side-name">管理后台</span>' +
+        '</a>';
+    } else {
+      html += '<a href="#/libraries" class="side-item' + (routeName === 'libraries' ? ' active' : '') + '">' +
+        '<span class="side-icon neutral">' + iconHTML('builtin:folder') + '</span>' +
+        '<span class="side-name">书库列表</span>' +
+        '</a>';
+    }
 
     nav.innerHTML = html;
   }
@@ -391,7 +393,7 @@
     node.setAttribute('data-sig', sig);
 
     if (!state.libraries.length) {
-      node.innerHTML = '<div class="k">藏书</div><div class="v" style="font-size:14px;font-weight:600;color:var(--text-2)">还没有媒体库</div>';
+      node.innerHTML = '<div class="k">藏书</div><div class="v" style="font-size:14px;font-weight:600;color:var(--text-2)">还没有书库</div>';
       return;
     }
 
@@ -739,7 +741,7 @@
   }
 
   /* ------------------------------------------------------------------ 首页
-     首页只做"入口"：顶部一条精选横幅，下面每个媒体库一行。
+     首页只做"入口"：顶部一条精选横幅，下面每个书库一行。
      具体的浏览、筛选、翻页，都在点进库里之后。
      像 Emby 的首页那样，一行只放十来个，看清是哪座库、最近进了什么就够了。 */
   function renderHome(force) {
@@ -747,7 +749,7 @@
     var already = view.getAttribute('data-view') === 'home' && $('#hero-wrap');
 
     if (already && !force) {
-      setTopbar('首页', state.libraries.length + ' 个媒体库');
+      setTopbar('首页', state.libraries.length + ' 个书库');
       return;
     }
 
@@ -761,14 +763,14 @@
             state.libraries.map(homeRowHTML).join('') +
           '</div>'
         : '<div class="empty" id="home-empty"><div class="empty-mark">' +
-            iconHTML('builtin:library') + '</div><h2>还没有媒体库</h2>' +
-            '<p>到「管理媒体库」里把一个装满电子书的目录挂进来。</p>' +
+            iconHTML('builtin:library') + '</div><h2>还没有书库</h2>' +
+            '<p>到「管理书库」里把一个装满电子书的目录挂进来。</p>' +
             (IS_ADMIN
-              ? '<a href="#/libraries" class="btn btn-primary">' + svg(ICONS.plus) + '新建媒体库</a>'
+              ? '<a href="#/libraries" class="btn btn-primary">' + svg(ICONS.plus) + '新建书库</a>'
               : '') +
           '</div>');
 
-    setTopbar('首页', state.libraries.length + ' 个媒体库');
+    setTopbar('首页', state.libraries.length + ' 个书库');
 
     // 横幅数据回来再插入，避免整页布局先跳一下
     loadFeatured().then(function (list) {
@@ -785,11 +787,11 @@
       loadHomeRow(lib);
     });
 
-    // 媒体库入口卡的封面：每座库取三张，异步回来后再替换图标占位
+    // 书库入口卡的封面：每座库取三张，异步回来后再替换图标占位
     loadLibraryCovers();
   }
 
-  /* 首页的媒体库入口：像 Emby 的库卡片那样，直接用该库最近几本书的封面
+  /* 首页的书库入口：像 Emby 的库卡片那样，直接用该库最近几本书的封面
      拼成一张横向卡片，库名压在最下面。不显示分区标题、数量或入口链接。 */
   function homeLibraryTileHTML(lib) {
     var label =
@@ -835,14 +837,14 @@
   }
 
   function homeLibrariesHTML() {
-    return '<section class="home-libs" aria-label="媒体库">' +
+    return '<section class="home-libs" aria-label="书库">' +
         '<div class="home-lib-row" id="home-lib-row">' +
           state.libraries.map(homeLibraryTileHTML).join('') +
         '</div>' +
       '</section>';
   }
 
-  /* 媒体库卡片封面：每座库取最近几本书的封面。结果缓存在 state.libCovers，
+  /* 书库卡片封面：每座库取最近几本书的封面。结果缓存在 state.libCovers，
      同一会话内来回切换首页不重复请求。 */
   function loadLibraryCovers() {
     var pending = state.libraries.filter(function (lib) {
@@ -1007,7 +1009,7 @@
       var lib = libraryById(state.libraryId);
       if (lib) return lib.path;
     }
-    return '来自 ' + state.libraries.length + ' 个媒体库';
+    return '来自 ' + state.libraries.length + ' 个书库';
   }
 
   function densitySegHTML() {
@@ -1049,7 +1051,7 @@
       return;
     }
 
-    // 从详情/媒体库返回封面墙：网格已经被销毁，先拿上次的查询结果垫上，
+    // 从详情/书库返回封面墙：网格已经被销毁，先拿上次的查询结果垫上，
     // 这样不会出现一段空白，随后 loadBooks 会把新数据整体替换进来。
     var prefill = (state.wallSig === wallQuerySig() && state.books.length)
       ? state.books.map(cardHTML).join('')
@@ -1214,16 +1216,16 @@
     if (state.libraries.length === 0) {
       empty.innerHTML =
         '<div class="empty-mark">' + iconHTML('builtin:library') + '</div>' +
-        '<h2>先创建一个媒体库</h2>' +
-        '<p>媒体库对应 NAS 上的一个目录。创建后 Libra 会自动递归扫描其中的 EPUB / PDF，' +
+        '<h2>先创建一个书库</h2>' +
+        '<p>书库对应 NAS 上的一个目录。创建后 Libra 会自动递归扫描其中的 EPUB / PDF，' +
         '提取书名、作者与封面，然后在这里铺成一面书架。</p>' +
-        '<a href="#/libraries" class="btn btn-primary">' + svg(ICONS.plus) + '新建媒体库</a>';
+        '<a href="#/libraries" class="btn btn-primary">' + svg(ICONS.plus) + '新建书库</a>';
       return;
     }
 
     empty.innerHTML =
       '<div class="empty-mark">' + svg(ICONS.search) + '</div>' +
-      '<h2>' + (state.q || state.format ? '没有匹配的书籍' : '这个媒体库还是空的') + '</h2>' +
+      '<h2>' + (state.q || state.format ? '没有匹配的书籍' : '这个书库还是空的') + '</h2>' +
       '<p>' + (state.q || state.format
         ? '换个关键词，或者把格式筛选切回「全部」试试。'
         : '确认目录里确实有 EPUB / PDF 文件，然后对这座书库执行一次重新扫描。') + '</p>';
@@ -1292,12 +1294,12 @@
               '<div class="specs">' +
                 spec('文件格式', esc(b.format.toUpperCase())) +
                 spec('文件大小', esc(b.size_human) + ' <span class="dim">' + esc(String(b.size)) + ' 字节</span>') +
-                spec('所属媒体库', '<a href="#/lib/' + b.library_id + '" class="link">' + esc(b.library_name) + '</a>') +
+                spec('所属书库', '<a href="#/lib/' + b.library_id + '" class="link">' + esc(b.library_name) + '</a>') +
                 spec('入库时间', esc(fmtTime(b.created_at))) +
                 spec('原始文件名', esc(b.filename), { full: true, mono: true }) +
               '</div>' +
 
-              /* 详情页只保留"下载原文件"。重新扫描统一在媒体库管理页操作，
+              /* 详情页只保留"下载原文件"。重新扫描统一在书库管理页操作，
                  免得在看书的时候误触一次全库扫描。 */
               '<div class="detail-actions">' +
                 '<a href="/download/' + b.id + '" class="btn btn-download btn-lg">' +
@@ -1324,7 +1326,7 @@
     });
   }
 
-  /* 详情页底部：同一系列的其他卷，或同一媒体库里的其他书。
+  /* 详情页底部：同一系列的其他卷，或同一书库里的其他书。
      这块是详情页最实用的一段 —— 看完一本往往想看下一本。 */
   function renderDetailMore(b) {
     var box = $('#detail-more');
@@ -1368,7 +1370,111 @@
     }).catch(function () { /* 推荐失败不影响详情 */ });
   }
 
-  /* ------------------------------------------------------------------ 媒体库管理 */
+  /* ------------------------------------------------------------------ 管理后台 */
+
+  function renderAdminView() {
+    var view = $('#view');
+    stopHeroRotation();
+    view.setAttribute('data-view', 'admin');
+    view.innerHTML =
+      '<div class="page-head">' +
+        '<div class="grow">' +
+          '<h1 class="page-title">管理后台</h1>' +
+          '<div class="page-sub">系统概览、注册设置与管理员工具</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="admin-grid">' +
+        '<section class="admin-card">' +
+          '<div class="admin-card-head">' +
+            '<div>' +
+              '<h2>开放注册</h2>' +
+              '<p>关闭后只有管理员能在「账号管理」里创建账号。</p>' +
+            '</div>' +
+            '<label class="switch" title="开放注册">' +
+              '<input id="allow-register" type="checkbox" disabled aria-label="开放注册">' +
+              '<span class="switch-track"></span>' +
+            '</label>' +
+          '</div>' +
+          '<div id="register-state" class="hint">读取中…</div>' +
+        '</section>' +
+
+        '<a class="admin-card admin-link" href="#/libraries">' +
+          '<div class="admin-link-head"><span class="admin-icon">' + iconHTML('builtin:library') + '</span>' +
+            '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
+          '<h2>书库管理</h2>' +
+          '<p>新建书库、修改目录、上传封面、触发扫描或删除书库。</p>' +
+        '</a>' +
+
+        '<a class="admin-card admin-link" href="#/users">' +
+          '<div class="admin-link-head"><span class="admin-icon">' + iconHTML('builtin:user') + '</span>' +
+            '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
+          '<h2>账号管理</h2>' +
+          '<p>创建账号、调整角色、重置密码、删除账号。</p>' +
+        '</a>' +
+
+        '<section class="admin-card" id="admin-info">' +
+          '<h2>系统信息</h2>' +
+          '<p>正在读取…</p>' +
+        '</section>' +
+      '</div>';
+
+    setTopbar('管理后台', '系统设置与管理员工具');
+    closeBootGate();
+
+    var toggle = $('#allow-register');
+    var stateNode = $('#register-state');
+
+    function paintRegisterState(on) {
+      if (toggle) {
+        toggle.checked = on;
+        toggle.disabled = false;
+      }
+      if (stateNode) {
+        stateNode.innerHTML = on
+          ? '<span class="tag ok">已开放</span><span>任何访客都可以注册普通成员账号。</span>'
+          : '<span class="tag">已关闭</span><span>注册入口隐藏，仅管理员可创建账号。</span>';
+      }
+    }
+
+    Promise.all([api('/api/admin/settings'), api('/api/status')]).then(function (res) {
+      var settings = res[0] || {};
+      var status = res[1] || {};
+      paintRegisterState(!!settings.allow_register);
+
+      var st = status.stats || {};
+      var info = $('#admin-info');
+      if (!info) return;
+      info.innerHTML =
+        '<h2>系统信息</h2>' +
+        '<div class="admin-stats">' +
+          '<div class="admin-stat"><span>版本</span><b>v' + esc(status.version || '—') + '</b></div>' +
+          '<div class="admin-stat"><span>书库</span><b>' + (status.library_count || 0) + '</b></div>' +
+          '<div class="admin-stat"><span>书籍</span><b>' + (st.total || 0) + '</b></div>' +
+          '<div class="admin-stat"><span>EPUB / PDF</span><b>' + (st.epub || 0) + ' / ' + (st.pdf || 0) + '</b></div>' +
+          '<div class="admin-stat"><span>占用体积</span><b>' + fmtBytes(st.total_size || 0) + '</b></div>' +
+          '<div class="admin-stat"><span>PDF 封面</span><b>' + (status.pdf_support ? '可用' : '未安装') + '</b></div>' +
+        '</div>' +
+        '<div class="admin-datadir"><span>数据目录</span><code>' + esc(status.data_dir || '—') + '</code></div>';
+
+      if (toggle) {
+        toggle.addEventListener('change', function () {
+          var next = this.checked;
+          toggle.disabled = true;
+          api('/api/admin/settings', { method: 'PUT', body: { allow_register: next } }).then(function (d) {
+            paintRegisterState(!!d.allow_register);
+            toast(d.allow_register ? '已开放注册' : '已关闭注册', 'ok');
+          }).catch(function (e) {
+            paintRegisterState(!next);
+            toast(e.message, 'err');
+          });
+        });
+      }
+    }).catch(function (e) {
+      if (stateNode) stateNode.innerHTML = '<span class="tag danger">读取失败</span><span>' + esc(e.message) + '</span>';
+    });
+  }
+
+  /* ------------------------------------------------------------------ 书库管理 */
 
   function renderLibrariesView() {
     var view = $('#view');
@@ -1378,23 +1484,23 @@
     var html =
       '<div class="page-head">' +
         '<div class="grow">' +
-          '<h1 class="page-title">媒体库</h1>' +
+          '<h1 class="page-title">书库</h1>' +
           '<div class="page-sub">每座书库对应磁盘上的一个目录，独立扫描与统计 · 当前共 ' +
             state.libraries.length + ' 座书库、' + totalBooks + ' 本藏书</div>' +
         '</div>' +
         (IS_ADMIN
           ? '<div class="page-tools">' +
-              '<button id="new-lib" class="btn btn-primary">' + svg(ICONS.plus) + '新建媒体库</button>' +
+              '<button id="new-lib" class="btn btn-primary">' + svg(ICONS.plus) + '新建书库</button>' +
             '</div>'
           : '') +
       '</div>';
 
     if (!state.libraries.length) {
       html += '<div class="empty"><div class="empty-mark">' + iconHTML('builtin:folder') + '</div>' +
-        '<h2>还没有媒体库</h2><p>' +
+        '<h2>还没有书库</h2><p>' +
         (IS_ADMIN
           ? '把一个装满电子书的目录挂进来，作为第一座书库。'
-          : '管理员还没有添加任何媒体库。') +
+          : '管理员还没有添加任何书库。') +
         '</p></div>';
     } else {
       html += '<div class="lib-list">' + state.libraries.map(libraryCardHTML).join('') + '</div>';
@@ -1402,7 +1508,7 @@
 
     view.setAttribute('data-view', 'libraries');
     view.innerHTML = html;
-    setTopbar('媒体库', state.libraries.length + ' 座书库');
+    setTopbar('书库', state.libraries.length + ' 座书库');
     closeBootGate();
 
     var newBtn = $('#new-lib');
@@ -1480,7 +1586,7 @@
   function confirmDeleteLibrary(lib) {
     var modal = openModal(
       '<div class="modal-head">' +
-        '<h3>删除媒体库</h3>' +
+        '<h3>删除书库</h3>' +
         '<p>将要删除「<b>' + esc(lib.name) + '</b>」及其 <b>' + (lib.book_count || 0) +
           '</b> 条书籍记录与已生成的封面文件。</p>' +
       '</div>' +
@@ -1501,7 +1607,7 @@
       btn.textContent = '删除中…';
       api('/api/libraries/' + lib.id, { method: 'DELETE' }).then(function () {
         modal.close();
-        toast('媒体库已删除', 'ok');
+        toast('书库已删除', 'ok');
         state.featured = null;
         state.libCovers = {};
         if (state.libraryId === lib.id) { state.libraryId = 0; location.hash = '#/'; }
@@ -1514,7 +1620,7 @@
     });
   }
 
-  /* ------------------------------------------------------------------ 媒体库表单 */
+  /* ------------------------------------------------------------------ 书库表单 */
 
   function openLibraryForm(lib) {
     var isEdit = !!lib;
@@ -1524,7 +1630,7 @@
     var modal = openModal(
       '<form id="lib-form">' +
         '<div class="modal-head">' +
-          '<h3>' + (isEdit ? '编辑媒体库' : '新建媒体库') + '</h3>' +
+          '<h3>' + (isEdit ? '编辑书库' : '新建书库') + '</h3>' +
           '<p>' + (isEdit
             ? '修改名称或图标不会影响已扫描的书籍；改动目录后需要重新扫描。'
             : '指定一个磁盘目录，Libra 会自动递归扫描其中的 EPUB / PDF。') + '</p>' +
@@ -1549,7 +1655,7 @@
 
           (isEdit
             ? '<div class="field">' +
-                '<label>媒体库封面</label>' +
+                '<label>书库封面</label>' +
                 '<div class="lib-cover-edit">' +
                   '<div id="lib-cover-preview" class="lib-cover-preview"></div>' +
                   '<div class="lib-cover-side">' +
@@ -1650,7 +1756,7 @@
       });
     });
 
-    // 媒体库封面：上传后立即生效，表单的其它字段照常保存
+    // 书库封面：上传后立即生效，表单的其它字段照常保存
     var coverUpload = modal.$('#lib-cover-upload');
     if (coverUpload) {
       var coverFile = modal.$('#lib-cover-file');
@@ -1668,7 +1774,7 @@
           coverURL = d.cover_url || '';
           var live = libraryById(lib.id);
           if (live) live.cover_url = coverURL;
-          toast('媒体库封面已更新', 'ok');
+          toast('书库封面已更新', 'ok');
         }).catch(function (err) {
           toast(err.message, 'err');
         }).then(function () {
@@ -1711,7 +1817,7 @@
         err.classList.remove('u-hidden');
       }
 
-      if (!name) { fail('请填写媒体库名称'); return; }
+      if (!name) { fail('请填写书库名称'); return; }
       if (!path) { fail('请选择目录路径'); return; }
       err.classList.add('u-hidden');
 
@@ -1726,7 +1832,7 @@
 
       req.then(function (data) {
         modal.close();
-        toast(isEdit ? '媒体库已更新' : '媒体库已创建，正在扫描…', 'ok');
+        toast(isEdit ? '书库已更新' : '书库已创建，正在扫描…', 'ok');
         state.featured = null;
         state.libCovers = {};
         var libId = data.library ? data.library.id : (lib ? lib.id : 0);
@@ -1753,7 +1859,7 @@
   // 只有管理员能进来；非管理员手敲 #/users 会被弹回全部书籍。
   // （弹回封面墙而不是首页，是因为"想看某个账号、结果被扔到家门口"更让人困惑。）
   function renderUsersView() {
-    if (!IS_ADMIN) { location.hash = '#/all'; return; }
+    if (!IS_ADMIN) { location.hash = '#/'; return; }
     stopHeroRotation();
 
     var view = $('#view');
@@ -1761,7 +1867,7 @@
     var html =
       '<div class="page-head">' +
         '<div class="grow">' +
-          '<h1 class="page-title">账号</h1>' +
+          '<h1 class="page-title">账号管理</h1>' +
           '<div class="page-sub" id="users-sub">正在读取…</div>' +
         '</div>' +
         '<div class="page-tools">' +
@@ -1772,7 +1878,7 @@
 
     view.setAttribute('data-view', 'users');
     view.innerHTML = html;
-    setTopbar('账号', '');
+    setTopbar('账号管理', '');
     closeBootGate();
 
     $('#new-user').addEventListener('click', function () { openUserForm(); });
@@ -1797,7 +1903,7 @@
     var sub = $('#users-sub');
     if (sub) {
       sub.textContent = '共 ' + users.length + ' 个账号，管理员 ' + admins +
-        ' 个。管理员可管理媒体库与账号，普通成员只能浏览和下载';
+        ' 个。管理员可管理书库与账号，普通成员只能浏览和下载';
       setTopbar('账号', users.length + ' 个账号');
     }
 
@@ -1877,7 +1983,7 @@
       '<form id="user-form">' +
         '<div class="modal-head">' +
           '<h3>新建账号</h3>' +
-          '<p>管理员可以管理媒体库与账号；普通成员只能浏览封面墙、搜索和下载。</p>' +
+          '<p>管理员可以管理书库与账号；普通成员只能浏览封面墙、搜索和下载。</p>' +
         '</div>' +
         '<div class="modal-body">' +
           '<div class="field">' +
@@ -1894,7 +2000,7 @@
             '<label for="u-role">角色</label>' +
             '<select id="u-role" class="select" style="width:100%">' +
               '<option value="user">普通成员 —— 只能浏览与下载</option>' +
-              '<option value="admin">管理员 —— 可管理媒体库与账号</option>' +
+              '<option value="admin">管理员 —— 可管理书库与账号</option>' +
             '</select>' +
           '</div>' +
           '<div id="u-error" class="alert error u-hidden"></div>' +
@@ -2041,7 +2147,7 @@
     var modal = openModal(
       '<div class="modal-head">' +
         '<h3>选择目录</h3>' +
-        '<p>浏览磁盘并挑一个目录。只有可读目录才能作为媒体库。</p>' +
+        '<p>浏览磁盘并挑一个目录。只有可读目录才能作为书库。</p>' +
       '</div>' +
       '<div class="modal-body">' +
         '<div class="form-row">' +
@@ -2180,7 +2286,7 @@
 
   /* ------------------------------------------------------------------ 通用弹窗 */
 
-  // 弹窗可能有嵌套（如新建媒体库里再开目录选择器），用计数保证滚动锁正确释放。
+  // 弹窗可能有嵌套（如新建书库里再开目录选择器），用计数保证滚动锁正确释放。
   var modalDepth = 0;
 
   function lockScroll(lock) {
@@ -2251,6 +2357,7 @@
     var parts = hash.split('/').filter(function (s) { return s.length > 0; });
 
     if (parts.length === 0) return { name: 'home' };
+    if (parts[0] === 'admin') return { name: 'admin' };
     if (parts[0] === 'libraries') return { name: 'libraries' };
     if (parts[0] === 'users') return { name: 'users' };
     if (parts[0] === 'lib') return { name: 'wall', libraryId: Number(parts[1]) || 0 };
@@ -2264,13 +2371,20 @@
     closeNav();
 
     // 每次换路由都回到页顶：首页可能已经滚到很下面，
-    // 点"查看全部"进媒体库时不应把首页的滚动偏移一起带过去。
+    // 点"查看全部"进书库时不应把首页的滚动偏移一起带过去。
     window.scrollTo(0, 0);
 
     // 离开详情页后，任何在途的详情响应都不该再往 #view 里写。
     if (r.name !== 'detail') state.detailId = 0;
     if (r.name !== 'home') stopHeroRotation();
 
+    if (r.name === 'admin') {
+      if (!IS_ADMIN) { location.hash = '#/'; return; }
+      state.libraryId = 0;
+      renderSidebar();
+      renderAdminView();
+      return;
+    }
     if (r.name === 'users') {
       state.libraryId = 0;
       renderSidebar();
@@ -2295,7 +2409,7 @@
       return;
     }
 
-    // wall：全部书籍（-1）或某个媒体库
+    // wall：全部书籍（-1）或某个书库
     state.libraryId = r.libraryId || 0;
     renderSidebar();
     renderWallShell();

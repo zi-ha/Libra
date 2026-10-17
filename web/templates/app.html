@@ -57,22 +57,22 @@
         <div id="user-menu" class="menu u-hidden" role="menu">
           <div class="menu-head">
             <div class="n">{{.Username}}</div>
-            <div class="r">{{if .IsAdmin}}管理员 · 可管理媒体库与账号{{else}}普通成员 · 浏览与下载{{end}}</div>
+            <div class="r">{{if .IsAdmin}}管理员 · 可管理书库与账号{{else}}普通成员 · 浏览与下载{{end}}</div>
           </div>
+          {{if .IsAdmin}}
+          <a class="menu-item" href="#/admin" role="menuitem">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2"/><circle cx="15" cy="12" r="2"/><circle cx="7" cy="18" r="2"/>
+            </svg>
+            管理后台
+          </a>
+          {{else}}
           <a class="menu-item" href="#/libraries" role="menuitem">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
               <path d="M3 9.5L12 3l9 6.5"/><path d="M5.5 10v10M9.5 10v10M14.5 10v10M18.5 10v10"/><path d="M3 20.5h18"/>
             </svg>
-            媒体库管理
+            书库列表
           </a>
-          {{if .IsAdmin}}
-          <button id="btn-users" class="menu-item" type="button" role="menuitem">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="9" cy="8.4" r="3.4"/><path d="M2.8 19.6a6.6 6.6 0 0 1 12.4 0"/>
-              <path d="M17 8.2a3 3 0 0 1 0 5.9"/><path d="M18.4 19.6a6.4 6.4 0 0 0-1.6-4.3"/>
-            </svg>
-            账号管理
-          </button>
           {{end}}
           <button id="btn-password" class="menu-item" type="button" role="menuitem">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">

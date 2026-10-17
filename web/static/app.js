@@ -2516,14 +2516,6 @@
       openPasswordForm();
     });
 
-    var btnUsers = $('#btn-users');
-    if (btnUsers) {
-      btnUsers.addEventListener('click', function () {
-        closeMenu();
-        location.hash = '#/users';
-      });
-    }
-
     // 卡片上的快捷下载：拦掉外层卡片链接的跳转
     function quickDownload(el) {
       var id = el.getAttribute('data-download');

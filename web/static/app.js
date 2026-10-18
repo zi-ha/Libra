@@ -790,6 +790,7 @@
 
     // 书库入口卡的封面：每座库取三张，异步回来后再替换图标占位
     loadLibraryCovers();
+    bindHomeLibs();
   }
 
   /* 首页的书库入口：像 Emby 的库卡片那样，直接用该库最近几本书的封面
@@ -839,10 +840,57 @@
 
   function homeLibrariesHTML() {
     return '<section class="home-libs" aria-label="书库">' +
-        '<div class="home-lib-row" id="home-lib-row">' +
-          state.libraries.map(homeLibraryTileHTML).join('') +
+        '<div class="home-lib-strip" id="home-lib-strip">' +
+          '<button class="rail-btn home-lib-nav prev" type="button" aria-label="向左滚动" disabled>' +
+            svg(ICONS.back) + '</button>' +
+          '<button class="rail-btn home-lib-nav next" type="button" aria-label="向右滚动" disabled>' +
+            svg(ICONS.chevron) + '</button>' +
+          '<div class="home-lib-row" id="home-lib-row">' +
+            state.libraries.map(homeLibraryTileHTML).join('') +
+          '</div>' +
         '</div>' +
       '</section>';
+  }
+
+  function updateHomeLibNav() {
+    var strip = $('#home-lib-strip');
+    var row = $('#home-lib-row');
+    if (!strip || !row) return;
+    var prev = $('.home-lib-nav.prev', strip);
+    var next = $('.home-lib-nav.next', strip);
+    if (!prev || !next) return;
+
+    var max = row.scrollWidth - row.clientWidth;
+    var noOverflow = max <= 2;
+    strip.classList.toggle('no-overflow', noOverflow);
+    prev.disabled = noOverflow || row.scrollLeft <= 2;
+    next.disabled = noOverflow || row.scrollLeft >= max - 2;
+  }
+
+  function scrollHomeLibs(dir) {
+    var row = $('#home-lib-row');
+    if (!row) return;
+    var step = Math.max(Math.round(row.clientWidth * 0.8), 240);
+    var max = Math.max(0, row.scrollWidth - row.clientWidth);
+    var left = Math.min(Math.max(row.scrollLeft + dir * step, 0), max);
+    if (row.scrollTo) row.scrollTo({ left: left, behavior: 'smooth' });
+    else row.scrollLeft = left;
+  }
+
+  function bindHomeLibs() {
+    var strip = $('#home-lib-strip');
+    var row = $('#home-lib-row');
+    if (!strip || !row) return;
+
+    if (strip.getAttribute('data-nav-bound') !== '1') {
+      strip.setAttribute('data-nav-bound', '1');
+      var prev = $('.home-lib-nav.prev', strip);
+      var next = $('.home-lib-nav.next', strip);
+      if (prev) prev.addEventListener('click', function () { scrollHomeLibs(-1); });
+      if (next) next.addEventListener('click', function () { scrollHomeLibs(1); });
+      row.addEventListener('scroll', updateHomeLibNav, { passive: true });
+    }
+    updateHomeLibNav();
   }
 
   /* 书库卡片封面：每座库取最近几本书的封面。结果缓存在 state.libCovers，
@@ -863,7 +911,10 @@
       var view = $('#view');
       var row = $('#home-lib-row');
       if (!view || !row || view.getAttribute('data-view') !== 'home') return;
+      var left = row.scrollLeft;
       row.innerHTML = state.libraries.map(homeLibraryTileHTML).join('');
+      row.scrollLeft = left;
+      bindHomeLibs();
     });
   }
 
@@ -2441,9 +2492,10 @@
       topbar.classList.toggle('is-scrolled', window.scrollY > 4);
     }, { passive: true });
 
-    // 窗口变宽/变窄后，海报行是否还能翻页要重新算一遍
+    // 窗口变宽/变窄后，海报行与书库入口行是否还能翻页要重新算一遍
     window.addEventListener('resize', debounce(function () {
       state.libraries.slice(0, 6).forEach(function (lib) { updateRailNav(lib.id); });
+      updateHomeLibNav();
     }, 150));
 
     var search = $('#search');

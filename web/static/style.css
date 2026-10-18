@@ -845,14 +845,29 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
    库名压在底部。不显示分区标题、数量或"书库列表"入口。 */
 
 .home-libs { margin-bottom: 30px; }
-.home-lib-row { display: flex; flex-wrap: wrap; gap: 12px; }
+/* 书库入口永远只占一行：不换行，超出时横向滚动，两侧按钮翻页。 */
+.home-lib-strip { position: relative; }
+.home-lib-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 2px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.home-lib-row::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.home-lib-strip.no-overflow .rail-btn { display: none; }
 .home-lib {
   position: relative;
   display: block;
-  flex: 1 1 220px;
-  max-width: 300px;
+  flex: 0 0 260px;
+  max-width: none;
   min-width: 0;
   aspect-ratio: 16 / 9;
+  scroll-snap-align: start;
   border-radius: var(--r-md);
   overflow: hidden;
   background: var(--surface-2);
@@ -1950,7 +1965,6 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
   .rail-btn.prev { left: -12px; }
   .rail-btn.next { right: -12px; }
   .rail-btn svg { width: 17px; height: 17px; }
-  .home-lib { flex-basis: 160px; max-width: none; }
   .page-title { font-size: 22px; }
   .toasts { right: 13px; left: 13px; bottom: 13px; width: auto; }
 }

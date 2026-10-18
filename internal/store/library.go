@@ -26,9 +26,9 @@ type Library struct {
 }
 
 const libraryColumns = `l.id, l.name, l.path, l.icon, l.cover, l.created_at, l.updated_at, l.last_scan_at, l.last_scan_state,
-	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id), 0),
-	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.format = 'epub'), 0),
-	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.format = 'pdf'), 0)`
+	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.deleted = 0), 0),
+	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.deleted = 0 AND b.format = 'epub'), 0),
+	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.deleted = 0 AND b.format = 'pdf'), 0)`
 
 func scanLibrary(row interface{ Scan(...any) error }) (*Library, error) {
 	var l Library

@@ -180,6 +180,9 @@ func NewRouter(cfg *config.Config, st *store.Store, sc *scanner.Scanner) (*gin.E
 	admin.GET("/api/admin/settings", s.getAdminSettings)
 	admin.PUT("/api/admin/settings", s.updateAdminSettings)
 
+	admin.PUT("/api/books/:id/metadata", s.updateBookMetadata)
+	admin.DELETE("/api/books/:id", s.deleteBookAdmin)
+
 	admin.GET("/api/users", s.listUsers)
 	admin.POST("/api/users", s.createUser)
 	admin.PUT("/api/users/:id/role", s.setUserRole)

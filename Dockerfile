@@ -13,7 +13,7 @@ COPY . .
 # buildx 多架构构建时由 BuildKit 注入；本地普通构建回落到当前 Go 的默认架构
 ARG TARGETOS
 ARG TARGETARCH
-ARG VERSION=1.0.1
+ARG VERSION=1.1.0
 
 RUN CGO_ENABLED=0 \
       GOOS=${TARGETOS:-linux} \
@@ -26,7 +26,7 @@ RUN CGO_ENABLED=0 \
 # ---------- 运行阶段 ----------
 FROM alpine:3.20
 
-ARG VERSION=1.0.1
+ARG VERSION=1.1.0
 LABEL org.opencontainers.image.title="Libra" \
       org.opencontainers.image.description="Lightweight self-hosted ebook library for NAS" \
       org.opencontainers.image.version="${VERSION}"

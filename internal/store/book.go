@@ -26,6 +26,8 @@ type Book struct {
 	Cover       string `json:"cover"` // 封面文件名（相对封面目录）
 	// CoverState 记录封面提取结果（ok / none / failed），增量扫描据此决定是否重试。
 	CoverState string    `json:"-"`
+	MetaLocked int       `json:"-"` // 1 = 管理员手动改过书名/作者，扫描不覆盖
+	Deleted    int       `json:"-"` // 1 = 从书库移除（软删除，保留原文件）
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 }
@@ -35,13 +37,15 @@ type Book struct {
 // 不动数据库扫描的那一列对应关系 —— 需要的时候用 SplitSeries 现算。
 
 const bookColumns = `b.id, b.library_id, COALESCE(l.name, ''), b.path, b.dir, b.filename,
-	b.title, b.author, b.format, b.size, b.mtime, b.cover, b.cover_state, b.created_at, b.updated_at`
+	b.title, b.author, b.format, b.size, b.mtime, b.cover, b.cover_state,
+	b.meta_locked, b.deleted, b.created_at, b.updated_at`
 
 func scanBook(row interface{ Scan(...any) error }) (*Book, error) {
 	var b Book
 	var created, updated int64
 	if err := row.Scan(&b.ID, &b.LibraryID, &b.LibraryName, &b.Path, &b.Dir, &b.Filename,
-		&b.Title, &b.Author, &b.Format, &b.Size, &b.Mtime, &b.Cover, &b.CoverState, &created, &updated); err != nil {
+		&b.Title, &b.Author, &b.Format, &b.Size, &b.Mtime, &b.Cover, &b.CoverState,
+		&b.MetaLocked, &b.Deleted, &created, &updated); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -79,6 +83,9 @@ func (q *BookQuery) normalize() {
 func (q *BookQuery) where() (string, []any) {
 	conds := make([]string, 0, 4)
 	args := make([]any, 0, 6)
+
+	// 软删除的书籍不再出现在列表 / 精选里。
+	conds = append(conds, "b.deleted = 0")
 
 	if q.LibraryID > 0 {
 		conds = append(conds, "b.library_id = ?")
@@ -155,7 +162,7 @@ func (s *Store) ListBooks(q BookQuery) ([]Book, int, error) {
 // GetBook 按 ID 查询单本。
 func (s *Store) GetBook(id int64) (*Book, error) {
 	return scanBook(s.db.QueryRow(
-		`SELECT `+bookColumns+` FROM books b LEFT JOIN libraries l ON l.id = b.library_id WHERE b.id = ?`, id))
+		`SELECT `+bookColumns+` FROM books b LEFT JOIN libraries l ON l.id = b.library_id WHERE b.id = ? AND b.deleted = 0`, id))
 }
 
 // BookStat 是聚合统计。
@@ -169,10 +176,10 @@ type BookStat struct {
 // Stats 返回整体（或某个书库）的统计信息。
 func (s *Store) Stats(libraryID int64) (BookStat, error) {
 	var st BookStat
-	where := ""
+	where := " WHERE deleted = 0"
 	args := []any{}
 	if libraryID > 0 {
-		where = " WHERE library_id = ?"
+		where += " AND library_id = ?"
 		args = append(args, libraryID)
 	}
 	err := s.db.QueryRow(`SELECT COUNT(*),
@@ -225,8 +232,14 @@ func (s *Store) UpsertBook(b *Book) (int64, error) {
 		ON CONFLICT(library_id, path) DO UPDATE SET
 			dir         = excluded.dir,
 			filename    = excluded.filename,
-			title       = CASE WHEN excluded.title  <> '' THEN excluded.title  ELSE books.title  END,
-			author      = CASE WHEN excluded.author <> '' THEN excluded.author ELSE books.author END,
+			title       = CASE
+				WHEN books.meta_locked = 1 THEN books.title
+				WHEN excluded.title <> '' THEN excluded.title
+				ELSE books.title END,
+			author      = CASE
+				WHEN books.meta_locked = 1 THEN books.author
+				WHEN excluded.author <> '' THEN excluded.author
+				ELSE books.author END,
 			format      = excluded.format,
 			size        = excluded.size,
 			mtime       = excluded.mtime,
@@ -248,17 +261,30 @@ func (s *Store) UpsertBook(b *Book) (int64, error) {
 	return existing, nil
 }
 
-// UpdateBookMeta 仅更新元数据字段（不改变 mtime/size）。
-func (s *Store) UpdateBookMeta(id int64, title, author, cover string) error {
-	_, err := s.db.Exec(`UPDATE books SET title = ?, author = ?, cover = ?, updated_at = ? WHERE id = ?`,
-		title, author, cover, now(), id)
-	return err
+// UpdateBookManualMeta 写入管理员手动修改的书名 / 作者，并锁定元数据，
+// 后续扫描不会把它们覆盖回文件里的原值。
+func (s *Store) UpdateBookManualMeta(id int64, title, author string) error {
+	res, err := s.db.Exec(`UPDATE books SET title = ?, author = ?, meta_locked = 1, updated_at = ?
+		WHERE id = ? AND deleted = 0`, title, author, now(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
-// DeleteBook 删除单本记录。
+// DeleteBook 从书库移除一本书（软删除：保留原始文件，扫描不会重新加回来）。
 func (s *Store) DeleteBook(id int64) error {
-	_, err := s.db.Exec(`DELETE FROM books WHERE id = ?`, id)
-	return err
+	res, err := s.db.Exec(`UPDATE books SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0`, now(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // DeleteBooksByLibrary 清空某个书库下的所有书籍记录。

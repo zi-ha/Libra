@@ -1338,6 +1338,9 @@
                   : '') +
                 '<span class="tag">' + esc(b.size_human) + '</span>' +
                 '<span class="tag">' + iconHTML('builtin:library') + esc(b.library_name) + '</span>' +
+                (b.meta_locked
+                  ? '<span class="tag">' + svg(ICONS.pencil) + '元数据已手动编辑</span>'
+                  : '') +
                 (b.file_exists === false
                   ? '<span class="tag danger">' + svg(ICONS.alert) + '原文件已不在磁盘上</span>'
                   : '<span class="tag ok">' + svg(ICONS.check) + '可下载</span>') +
@@ -1352,10 +1355,16 @@
               '</div>' +
 
               /* 详情页只保留"下载原文件"。重新扫描统一在书库管理页操作，
-                 免得在看书的时候误触一次全库扫描。 */
+                 免得在看书的时候误触一次全库扫描。管理员额外可以编辑元数据 / 移除书籍。 */
               '<div class="detail-actions">' +
                 '<a href="/download/' + b.id + '" class="btn btn-download btn-lg">' +
                   svg(ICONS.download) + '下载原文件</a>' +
+                (IS_ADMIN
+                  ? '<button type="button" id="book-edit-meta" class="btn btn-lg">' +
+                      svg(ICONS.pencil) + '编辑元数据</button>' +
+                    '<button type="button" id="book-delete" class="btn btn-lg btn-danger">' +
+                      svg(ICONS.trash) + '删除书籍</button>'
+                  : '') +
               '</div>' +
             '</div>' +
 
@@ -1368,6 +1377,13 @@
       closeBootGate();
 
       renderDetailMore(b);
+
+      if (IS_ADMIN) {
+        var editMeta = $('#book-edit-meta');
+        if (editMeta) editMeta.addEventListener('click', function () { openBookMetaForm(b); });
+        var delBook = $('#book-delete');
+        if (delBook) delBook.addEventListener('click', function () { confirmDeleteBook(b); });
+      }
     }).catch(function (err) {
       clearTimeout(slowTimer);
       if (state.detailId !== id) return;
@@ -1375,6 +1391,111 @@
         '<h2>打不开这本书</h2><p>' + esc(err.message) + '</p>' +
         '<a href="#/" class="btn">返回书库</a></div>';
       view.innerHTML = errHTML;
+    });
+  }
+
+  /* 管理员：编辑书名 / 作者。保存后 meta_locked=1，扫描不会覆盖。 */
+  function openBookMetaForm(b) {
+    var modal = openModal(
+      '<form id="book-meta-form">' +
+        '<div class="modal-head">' +
+          '<h3>编辑书籍元数据</h3>' +
+          '<p>' + esc(b.format.toUpperCase()) + ' · ' + esc(b.filename) + '</p>' +
+        '</div>' +
+        '<div class="modal-body">' +
+          '<div class="field">' +
+            '<label for="bm-title">书名</label>' +
+            '<input id="bm-title" type="text" class="input" maxlength="500" required ' +
+              'value="' + esc(b.title) + '">' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="bm-author">作者</label>' +
+            '<input id="bm-author" type="text" class="input" maxlength="300" ' +
+              'value="' + esc(b.author || '') + '" placeholder="未知作者">' +
+          '</div>' +
+          '<div class="alert info">' + svg(ICONS.info) +
+            '<span>保存后会锁定这本书的书名与作者，后续扫描不会用文件内嵌元数据覆盖。</span></div>' +
+          '<div id="bm-error" class="alert error u-hidden" style="margin-top:14px"></div>' +
+        '</div>' +
+        '<div class="modal-foot">' +
+          '<button type="button" data-close class="btn">取消</button>' +
+          '<button type="submit" id="bm-save" class="btn btn-primary">' + svg(ICONS.check) + '保存</button>' +
+        '</div>' +
+      '</form>'
+    );
+
+    var form = modal.$('#book-meta-form');
+    var title = modal.$('#bm-title');
+    var author = modal.$('#bm-author');
+    var errBox = modal.$('#bm-error');
+    var save = modal.$('#bm-save');
+
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      errBox.classList.add('u-hidden');
+      var nextTitle = title.value.trim();
+      if (!nextTitle) {
+        errBox.innerHTML = svg(ICONS.alert) + '<span>书名不能为空</span>';
+        errBox.classList.remove('u-hidden');
+        title.focus();
+        return;
+      }
+      save.disabled = true;
+      save.textContent = '保存中…';
+      api('/api/books/' + b.id + '/metadata', {
+        method: 'PUT',
+        body: { title: nextTitle, author: author.value.trim() }
+      }).then(function () {
+        modal.close();
+        toast('元数据已保存', 'ok');
+        state.featured = null;
+        state.libCovers = {};
+        renderDetail(b.id);
+      }).catch(function (err) {
+        save.disabled = false;
+        save.innerHTML = svg(ICONS.check) + '保存';
+        errBox.innerHTML = svg(ICONS.alert) + '<span>' + esc(err.message) + '</span>';
+        errBox.classList.remove('u-hidden');
+      });
+    });
+  }
+
+  /* 管理员：从书库移除书籍。软删除，保留 NAS 上的原始文件。 */
+  function confirmDeleteBook(b) {
+    var modal = openModal(
+      '<div class="modal-head">' +
+        '<h3>删除书籍</h3>' +
+        '<p>确定要把「<b>' + esc(b.title) + '</b>」从书库中移除吗？</p>' +
+      '</div>' +
+      '<div class="modal-body">' +
+        '<div class="alert error">' + svg(ICONS.alert) +
+          '<span>只会移除 Libra 中的书籍记录与封面，<b>不会删除 NAS 上的原始文件</b>。' +
+          '移除后重新扫描也不会重新添加。</span></div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<button type="button" data-close class="btn">取消</button>' +
+        '<button type="button" id="book-del-confirm" class="btn btn-primary danger-solid">' +
+          svg(ICONS.trash) + '确认删除</button>' +
+      '</div>'
+    );
+
+    var btn = modal.$('#book-del-confirm');
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      btn.textContent = '删除中…';
+      api('/api/books/' + b.id, { method: 'DELETE' }).then(function () {
+        modal.close();
+        toast('书籍已从书库移除', 'ok');
+        state.featured = null;
+        state.libCovers = {};
+        loadLibraries().catch(function () {}).then(function () {
+          location.hash = '#/lib/' + b.library_id;
+        });
+      }).catch(function (err) {
+        btn.disabled = false;
+        btn.innerHTML = svg(ICONS.trash) + '确认删除';
+        toast(err.message, 'err');
+      });
     });
   }
 

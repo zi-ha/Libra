@@ -97,6 +97,8 @@ func (s *Store) Migrate() error {
 			mtime      INTEGER NOT NULL DEFAULT 0,
 			cover      TEXT    NOT NULL DEFAULT '',
 			cover_state TEXT   NOT NULL DEFAULT '',
+			meta_locked INTEGER NOT NULL DEFAULT 0,
+			deleted     INTEGER NOT NULL DEFAULT 0,
 			created_at INTEGER NOT NULL,
 			updated_at INTEGER NOT NULL
 		)`,
@@ -118,9 +120,15 @@ func (s *Store) Migrate() error {
 		}
 	}
 
-	// 兼容旧库：libraries.cover 是后加的列，CREATE TABLE IF NOT EXISTS 不会补列。
+	// 兼容旧库：新加的列需要手动补，CREATE TABLE IF NOT EXISTS 不会改已有表。
 	if err := s.ensureColumn("libraries", "cover", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return fmt.Errorf("迁移 libraries.cover 失败: %w", err)
+	}
+	if err := s.ensureColumn("books", "meta_locked", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("迁移 books.meta_locked 失败: %w", err)
+	}
+	if err := s.ensureColumn("books", "deleted", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("迁移 books.deleted 失败: %w", err)
 	}
 	return nil
 }

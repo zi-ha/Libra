@@ -14,11 +14,12 @@
 - **首页**：精选轮播（统一 `cover` + 高斯模糊 + 暗色遮罩）、书库入口卡、各库最新入库横排。
 - **浏览**：封面墙 / 搜索 / EPUB·PDF 筛选 / 按书名、作者、入库时间、体积排序 / 三档网格密度 / 滚动到底自动续页。
 - **详情与下载**：封面、作者、格式、体积、所属库、入库时间、原始文件名；流式下载，支持 Range 断点续传与中文文件名。
+- **管理员书籍操作**：在书籍详情页可修改 EPUB / PDF 的书名与作者（保存后扫描不覆盖），或从书库移除书籍（保留 NAS 原始文件）。
 - **账号与权限**：管理员 / 普通成员两级角色；首个注册账号自动成为管理员。
 - **管理后台**：`#/admin` 集中放注册开关、书库管理、账号管理和系统信息；普通成员不显示入口。
 - **登录 / 注册**：登录页支持显示密码、注册状态提示；管理员可随时在后台开放或关闭注册。
 - **体验**：深色 / 浅色主题、侧栏抽屉、快捷键 `/` 聚焦搜索、响应式布局。
-- **版本**：当前版本 `1.0.1`，统一从 `main.go` 的 `var version` 读取。
+- **版本**：当前版本 `1.1.0`，统一从 `main.go` 的 `var version` 读取。
 
 | 深色 | 浅色 |
 |---|---|
@@ -35,6 +36,13 @@
 管理员在 `#/admin` 集中管理注册开关、书库、账号和系统信息。
 
 ![管理后台](docs/screenshots/admin.webp)
+
+### 管理员编辑书籍
+
+管理员打开任意书籍详情页后，会多出两个操作：
+
+- **编辑元数据**：修改书名 / 作者，保存后设置 `meta_locked`，后续扫描不会覆盖
+- **删除书籍**：从书库移除记录与封面（软删除），NAS 上的原始 EPUB / PDF 文件保留，重新扫描也不会再出现
 
 ### 管理员上传书库封面
 
@@ -88,7 +96,7 @@ docker run -d \
 
 | 标签 | 来源 |
 |---|---|
-| `1.0.1` / `v1.0.1` / `1.0` | `main.go` 里的 `var version` |
+| `1.1.0` / `v1.1.0` / `1.0` | `main.go` 里的 `var version` |
 | `latest` | `main` 分支手动运行 |
 | `main` | `main` 分支手动运行 |
 | `sha-xxxxxxx` | 对应 commit |
@@ -104,7 +112,7 @@ docker run -d \
 # 1. 上传 tar 到 NAS 后导入
 docker load -i libra-linux-amd64.tar
 
-# 2. 确认镜像名，默认是 libra:1.0.1
+# 2. 确认镜像名，默认是 libra:1.1.0
 docker images | grep libra
 
 # 3. 准备数据目录
@@ -120,7 +128,7 @@ docker compose -f docker-compose.nas.yml up -d
 
 完整的 NAS compose 文件：[docker-compose.nas.yml](docker-compose.nas.yml)。
 
-如果导入的镜像标签不是 `libra:1.0.1`，把 yaml 里的 `image:` 改成对应标签即可。
+如果导入的镜像标签不是 `libra:1.1.0`，把 yaml 里的 `image:` 改成对应标签即可。
 
 ### 方式 D：本地编译
 
@@ -277,7 +285,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 发布用的版本号只有一个来源：`main.go` 里的
 
 ```go
-var version = "1.0.1"
+var version = "1.1.0"
 ```
 
 工作流会先读取这个值，然后用同一个版本号：
@@ -294,13 +302,13 @@ var version = "1.0.1"
 4. 选择要构建的分支（通常是 `main`）
 5. 点击 **Run workflow**
 
-假设 `main.go` 里是 `1.0.1`，运行后会得到：
+假设 `main.go` 里是 `1.1.0`，运行后会得到：
 
 镜像标签：
 
 ```text
-1.0.1
-v1.0.1
+1.1.0
+v1.1.0
 1.0
 main
 sha-xxxxxxx
@@ -310,7 +318,7 @@ latest
 Release：
 
 ```text
-Tag: v1.0.1
+Tag: v1.1.0
 Assets:
   libra-linux-amd64
   libra-linux-arm64
@@ -534,11 +542,11 @@ jobs:
 2. 点击 **Run workflow**
 3. 选择参数：
    - `arch`：`amd64` 或 `arm64`（按 NAS CPU 选择）
-   - `version`：镜像标签，例如 `dev`、`1.0.1`
+   - `version`：镜像标签，例如 `dev`、`1.1.0`
    - `with_poppler`：`1` 包含 PDF 封面渲染，`0` 更小
 4. 运行完成后，在运行页底部 **Artifacts** 下载：
    ```text
-   libra-linux-amd64-1.0.1.zip
+   libra-linux-amd64-1.1.0.zip
    ```
 5. 解压得到：
    ```text
@@ -560,12 +568,12 @@ jobs:
      -e LIBRA_DATA_DIR=/data \
      -e LIBRA_LIBRARY_ROOT=/books \
      -e LIBRA_ALLOW_REGISTER=false \
-     libra:1.0.1
+     libra:1.1.0
    ```
 
 > `docker save` / tar 只包含一个架构。给 ARM NAS 下载时必须选 `arm64`；给 x86 NAS 选 `amd64`。
 >
-> 如果 `version` 填的不是 `1.0.1`，启动命令最后的镜像名要相应改成 `libra:<version>`。
+> 如果 `version` 填的不是 `1.1.0`，启动命令最后的镜像名要相应改成 `libra:<version>`。
 >
 > GitHub Actions 的 Artifact 默认保留 7 天，过期后需要重新运行工作流。
 
@@ -590,9 +598,9 @@ on:
           - amd64
           - arm64
       version:
-        description: "镜像标签 / 版本号，例如 1.0.1、dev"
+        description: "镜像标签 / 版本号，例如 1.1.0、dev"
         required: true
-        default: "1.0.1"
+        default: "1.1.0"
         type: string
       with_poppler:
         description: "是否包含 poppler（PDF 首页封面渲染）"
@@ -691,6 +699,8 @@ jobs:
 | 登录 | GET | `/api/status` | 系统概览（版本、统计、数据目录） |
 | 管理员 | GET | `/api/admin/settings` | 读取注册开关 |
 | 管理员 | PUT | `/api/admin/settings` | 修改注册开关 |
+| 管理员 | PUT | `/api/books/:id/metadata` | 修改书名 / 作者（扫描不覆盖） |
+| 管理员 | DELETE | `/api/books/:id` | 从书库移除书籍（软删除，保留原文件） |
 | 管理员 | POST | `/api/libraries` | 新建书库（自动扫描） |
 | 管理员 | PUT | `/api/libraries/:id` | 修改名称 / 目录 / 图标 |
 | 管理员 | DELETE | `/api/libraries/:id` | 删除书库 |
@@ -725,6 +735,9 @@ jobs:
 **上传的书库封面在哪里？**  
 在 `<DATA_DIR>/covers/<库ID>/_library-*.jpg`。重新扫描或修改目录不会删除它；删除书库会连同封面目录一起清理。
 
+**管理员删除书籍会删除 NAS 上的原文件吗？**  
+不会。删除是软删除：只移除 Libra 的书籍记录与封面，原始 EPUB / PDF 保留在磁盘上；重新扫描也不会再添加回来。如果要清理原文件，请在 NAS 上手动删除。
+
 **忘记管理员密码？**
 
 ```bash
@@ -732,7 +745,7 @@ docker exec -it libra /usr/local/bin/libra reset-password admin 新密码
 ```
 
 **`docker stop` 时容器报 exit 2？**  
-1.0.1 起应用会捕获 `SIGTERM` 并调用 `http.Server.Shutdown` 优雅退出。请使用 1.0.1 或更新的镜像；compose 中也建议保留：
+1.1.0 起应用会捕获 `SIGTERM` 并调用 `http.Server.Shutdown` 优雅退出。请使用 1.1.0 或更新的镜像；compose 中也建议保留：
 
 ```yaml
 stop_grace_period: 15s

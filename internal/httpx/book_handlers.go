@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -209,6 +210,86 @@ func (s *Server) downloadBook(c *gin.Context) {
 	http.ServeFile(c.Writer, c.Request, b.Path)
 }
 
+// updateBookMetadata 允许管理员修改书名 / 作者。
+// 写入后 meta_locked=1，后续扫描不会再把它们覆盖回文件内嵌值。
+func (s *Server) updateBookMetadata(c *gin.Context) {
+	id, okID := paramID(c, "id")
+	if !okID {
+		return
+	}
+	var req struct {
+		Title  string `json:"title"`
+		Author string `json:"author"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		fail(c, 400, "请求格式错误")
+		return
+	}
+	title := strings.TrimSpace(req.Title)
+	if title == "" {
+		fail(c, 400, "书名不能为空")
+		return
+	}
+	if len(title) > 500 {
+		fail(c, 400, "书名过长")
+		return
+	}
+	author := strings.TrimSpace(req.Author)
+	if len(author) > 300 {
+		fail(c, 400, "作者名过长")
+		return
+	}
+
+	if err := s.st.UpdateBookManualMeta(id, title, author); err != nil {
+		if err == store.ErrNotFound {
+			fail(c, 404, "书籍不存在")
+			return
+		}
+		failErr(c, 500, "保存书籍元数据失败", err)
+		return
+	}
+	b, err := s.st.GetBook(id)
+	if err != nil {
+		failErr(c, 500, "读取书籍失败", err)
+		return
+	}
+	ok(c, gin.H{"book": bookJSON(b)})
+}
+
+// deleteBookAdmin 从书库移除一本书。
+// 采用软删除：保留 NAS 上的原始文件，只移除索引与封面，重新扫描也不会加回来。
+func (s *Server) deleteBookAdmin(c *gin.Context) {
+	id, okID := paramID(c, "id")
+	if !okID {
+		return
+	}
+	b, err := s.st.GetBook(id)
+	if err != nil {
+		fail(c, 404, "书籍不存在")
+		return
+	}
+	if err := s.st.DeleteBook(id); err != nil {
+		if err == store.ErrNotFound {
+			fail(c, 404, "书籍不存在")
+			return
+		}
+		failErr(c, 500, "删除书籍失败", err)
+		return
+	}
+	s.removeBookCover(b.LibraryID, b.Cover)
+	ok(c, gin.H{"message": "书籍已从书库移除"})
+}
+
+func (s *Server) removeBookCover(libraryID int64, cover string) {
+	if cover == "" {
+		return
+	}
+	dir := s.cfg.LibraryCoversDir(libraryID)
+	_ = os.Remove(filepath.Join(dir, cover))
+	base := strings.TrimSuffix(cover, filepath.Ext(cover)) + ".jpg"
+	_ = os.Remove(filepath.Join(dir, "thumbs", base))
+}
+
 // bookJSON 统一书籍对外结构。
 func bookJSON(b *store.Book) gin.H {
 	coverURL := ""
@@ -234,6 +315,7 @@ func bookJSON(b *store.Book) gin.H {
 		"has_cover":    b.Cover != "",
 		"cover_url":    coverURL,
 		"thumb_url":    thumbURL,
+		"meta_locked":  b.MetaLocked == 1,
 		"created_at":   b.CreatedAt,
 		"updated_at":   b.UpdatedAt,
 	}

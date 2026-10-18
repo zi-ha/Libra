@@ -90,7 +90,10 @@ func NewRouter(cfg *config.Config, st *store.Store, sc *scanner.Scanner) (*gin.E
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(gin.Logger(), gin.Recovery(), securityHeaders())
+	// 健康检查每 30 秒一次，不写进访问日志，避免把正常日志刷满。
+	r.Use(gin.LoggerWithConfig(gin.LoggerConfig{
+		SkipPaths: []string{"/healthz"},
+	}), gin.Recovery(), securityHeaders())
 	r.MaxMultipartMemory = 8 << 20 // 图标上传最大 8MB
 
 	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {

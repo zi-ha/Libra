@@ -36,8 +36,9 @@ services:
       # 首次运行前建议先创建并授权：
       #   mkdir -p data && sudo chown -R 1000:1000 data
       - ./data:/data
-      # 书籍目录：只读挂载，Libra 绝不写入
-      - /volume1/books:/books:ro
+      # 书籍目录：需要可写，管理员在详情页修改元数据时会写回 EPUB / PDF。
+      # 如果只想完全只读，可以改成 :ro，但"编辑元数据"会失败。
+      - /volume1/books:/books
 
     # 常驻内存很小，给个上限防止异常情况吃满 NAS
     mem_limit: 256m

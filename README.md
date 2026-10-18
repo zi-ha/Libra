@@ -14,7 +14,7 @@
 - **首页**：精选轮播（统一 `cover` + 高斯模糊 + 暗色遮罩）、书库入口卡、各库最新入库横排。
 - **浏览**：封面墙 / 搜索 / EPUB·PDF 筛选 / 按书名、作者、入库时间、体积排序 / 三档网格密度 / 滚动到底自动续页。
 - **详情与下载**：封面、作者、格式、体积、所属库、入库时间、原始文件名；流式下载，支持 Range 断点续传与中文文件名。
-- **管理员书籍操作**：在书籍详情页可修改 EPUB / PDF 的书名与作者（保存后扫描不覆盖），或从书库移除书籍（保留 NAS 原始文件）。
+- **管理员书籍操作**：在书籍详情页可修改 EPUB / PDF 的书名与作者（写回源文件，保存后扫描不覆盖），或从书库移除书籍（保留 NAS 原始文件）。
 - **账号与权限**：管理员 / 普通成员两级角色；首个注册账号自动成为管理员。
 - **管理后台**：`#/admin` 集中放注册开关、书库管理、账号管理和系统信息；普通成员不显示入口。
 - **登录 / 注册**：登录页支持显示密码、注册状态提示；管理员可随时在后台开放或关闭注册。
@@ -41,7 +41,7 @@
 
 管理员打开任意书籍详情页后，会多出两个操作：
 
-- **编辑元数据**：修改书名 / 作者，保存后设置 `meta_locked`，后续扫描不会覆盖
+- **编辑元数据**：修改书名 / 作者，同时写回 EPUB / PDF 源文件，并设置 `meta_locked`，后续扫描不会覆盖
 - **删除书籍**：从书库移除记录与封面（软删除），NAS 上的原始 EPUB / PDF 文件保留，重新扫描也不会再出现
 
 ### 管理员上传书库封面
@@ -65,7 +65,7 @@ mkdir -p data
 sudo chown -R 1000:1000 data
 
 # 修改 docker-compose.yml 里的书籍目录：
-#   - /volume1/books:/books:ro  →  你自己的 NAS 路径
+#   - /volume1/books:/books  →  你自己的 NAS 路径
 
 docker compose up -d --build
 ```
@@ -86,7 +86,7 @@ docker run -d \
   --restart unless-stopped \
   -p 8080:8080 \
   -v "$PWD/data:/data" \
-  -v "/path/to/your/books:/books:ro" \
+  -v "/path/to/your/books:/books" \
   -e TZ=Asia/Shanghai \
   -e LIBRA_ALLOW_REGISTER=false \
   ghcr.io/<owner>/libra:latest
@@ -96,13 +96,20 @@ docker run -d \
 
 | 标签 | 来源 |
 |---|---|
-| `1.1.0` / `v1.1.0` / `1.0` | `main.go` 里的 `var version` |
+| `1.1.0` / `v1.1.0` / `1.1` | `main.go` 里的 `var version` |
 | `latest` | `main` 分支手动运行 |
 | `main` | `main` 分支手动运行 |
 | `sha-xxxxxxx` | 对应 commit |
 
+Docker Hub 镜像名：
+
+```text
+docker.io/<dockerhub-user>/libra:latest
+```
+
 > 把 `<owner>` 换成你的 GitHub 用户名；如果仓库名不是 `libra`，镜像名也要相应替换。
 > 首次使用 GHCR 时，包默认可能是私有的。需要匿名拉取的话，到 GitHub 仓库的 Package 设置里把镜像可见性改为 public。
+> Docker Hub 需要在仓库 Secrets 中配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN`，详见下方的 GitHub Actions 章节。
 
 ### 方式 C：NAS 本地导入镜像（离线）
 
@@ -265,7 +272,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 
 | 工作流 | 用途 | 产物 |
 |---|---|---|
-| `.github/workflows/docker-image.yml` | 读取代码版本，构建双架构镜像并创建 Release | GHCR 镜像 + GitHub Release |
+| `.github/workflows/docker-image.yml` | 读取代码版本，构建双架构镜像并创建 Release | GHCR + Docker Hub 镜像 + GitHub Release |
 | `.github/workflows/image-tar.yml` | 手动选择架构，构建单架构镜像并导出 tar | GitHub Actions Artifact，可下载后上传 NAS |
 
 > GitHub 只识别 `.github/workflows/*.yml` 下的工作流，所以 YAML **必须**放在 `.github/workflows/`，不能放在仓库根目录。
@@ -276,7 +283,7 @@ powershell -ExecutionPolicy Bypass -File scripts/dev.ps1
 > - `context: .` → 仓库根目录
 > - `file: ./Dockerfile` → 仓库根目录的 `Dockerfile`
 
-### 工作流一：构建 GHCR 镜像并创建 GitHub Release
+### 工作流一：构建 GHCR + Docker Hub 镜像并创建 GitHub Release
 
 工作流文件：`.github/workflows/docker-image.yml`
 
@@ -291,10 +298,40 @@ var version = "1.1.0"
 工作流会先读取这个值，然后用同一个版本号：
 
 1. 推送到 GHCR
-2. 创建 / 更新 GitHub Release
-3. 编译 Linux amd64 / arm64 二进制并作为 Release 附件上传
+2. 推送到 Docker Hub
+3. 创建 / 更新 GitHub Release
+4. 编译 Linux amd64 / arm64 二进制并作为 Release 附件上传
 
-手动触发步骤：
+#### 配置 Docker Hub Secrets
+
+打开 GitHub 仓库：
+
+```text
+Settings → Secrets and variables → Actions → New repository secret
+```
+
+添加两个 Secret：
+
+| Secret | 内容 |
+|---|---|
+| `DOCKERHUB_USERNAME` | Docker Hub 用户名，例如 `zi-ha` |
+| `DOCKERHUB_TOKEN` | Docker Hub Access Token（不要用登录密码） |
+
+Token 在 Docker Hub：
+
+```text
+Account Settings → Security → New Access Token
+```
+
+权限至少需要 **Read & Write**。工作流默认推送：
+
+```text
+docker.io/<DOCKERHUB_USERNAME>/libra
+```
+
+如果 Docker Hub 仓库名不是 `libra`，修改 workflow 里 `docker.io/.../libra` 这一段。
+
+#### 手动触发步骤
 
 1. 打开 GitHub 仓库的 **Actions** 页面
 2. 左侧选择 **Docker Image & Release**
@@ -304,15 +341,22 @@ var version = "1.1.0"
 
 假设 `main.go` 里是 `1.1.0`，运行后会得到：
 
-镜像标签：
+镜像标签（GHCR 与 Docker Hub 各一份）：
 
 ```text
 1.1.0
 v1.1.0
-1.0
+1.1
 main
 sha-xxxxxxx
 latest
+```
+
+Docker Hub 镜像：
+
+```text
+docker.io/<DOCKERHUB_USERNAME>/libra:1.1.0
+docker.io/<DOCKERHUB_USERNAME>/libra:latest
 ```
 
 Release：
@@ -335,6 +379,8 @@ Assets:
 
 > 如果推送镜像时报权限错误，检查仓库 **Settings → Actions → General → Workflow permissions**，并确认工作流中的 `packages: write` 权限没有组织策略拦截。
 >
+> Docker Hub 登录失败时，检查 `DOCKERHUB_USERNAME` / `DOCKERHUB_TOKEN` 是否已配置，以及 Token 是否有 Read & Write 权限。
+>
 > 创建 Release 需要 `contents: write`，当前 workflow 已经在 release job 里单独声明。
 
 <details>
@@ -349,7 +395,7 @@ name: Docker Image & Release
 #
 # 版本号只有一个来源：main.go 里的 var version = "x.y.z"。
 # 手动运行后：
-#   1. 构建 linux/amd64 + linux/arm64 镜像并推送到 GHCR
+#   1. 构建 linux/amd64 + linux/arm64 镜像并推送到 GHCR 与 Docker Hub
 #   2. 用同一个版本号创建 / 更新 GitHub Release，并上传 Linux 二进制
 
 on:
@@ -446,11 +492,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check Docker Hub secrets
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::请在仓库 Secrets 中配置 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ steps.image.outputs.name }}
+          images: |
+            ghcr.io/${{ steps.image.outputs.name }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/libra
           tags: |
             type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=${{ needs.version.outputs.tag }}
@@ -564,7 +628,7 @@ jobs:
      --restart unless-stopped \
      -p 8080:8080 \
      -v /volume1/docker/libra/data:/data \
-     -v /volume1/books:/books:ro \
+     -v /volume1/books:/books \
      -e LIBRA_DATA_DIR=/data \
      -e LIBRA_LIBRARY_ROOT=/books \
      -e LIBRA_ALLOW_REGISTER=false \
@@ -699,7 +763,7 @@ jobs:
 | 登录 | GET | `/api/status` | 系统概览（版本、统计、数据目录） |
 | 管理员 | GET | `/api/admin/settings` | 读取注册开关 |
 | 管理员 | PUT | `/api/admin/settings` | 修改注册开关 |
-| 管理员 | PUT | `/api/books/:id/metadata` | 修改书名 / 作者（扫描不覆盖） |
+| 管理员 | PUT | `/api/books/:id/metadata` | 修改书名 / 作者并写回 EPUB / PDF 源文件 |
 | 管理员 | DELETE | `/api/books/:id` | 从书库移除书籍（软删除，保留原文件） |
 | 管理员 | POST | `/api/libraries` | 新建书库（自动扫描） |
 | 管理员 | PUT | `/api/libraries/:id` | 修改名称 / 目录 / 图标 |
@@ -745,7 +809,7 @@ docker exec -it libra /usr/local/bin/libra reset-password admin 新密码
 ```
 
 **`docker stop` 时容器报 exit 2？**  
-1.1.0 起应用会捕获 `SIGTERM` 并调用 `http.Server.Shutdown` 优雅退出。请使用 1.1.0 或更新的镜像；compose 中也建议保留：
+1.0.1 起应用会捕获 `SIGTERM` 并调用 `http.Server.Shutdown` 优雅退出。请使用 1.0.1 或更新的镜像；compose 中也建议保留：
 
 ```yaml
 stop_grace_period: 15s
@@ -754,7 +818,7 @@ stop_grace_period: 15s
 旧镜像收到 `SIGTERM` 后由 Go 运行时直接终止，退出码会是 2，看起来像“错误退出”。
 
 **数据会不会丢？**  
-只要把 `/data` 挂载到宿主机，删除 / 重建容器不会丢数据。书籍目录以只读方式挂载，Libra 不会修改原始文件。
+只要把 `/data` 挂载到宿主机，删除 / 重建容器不会丢数据。书籍目录需要可写：管理员修改元数据时会写回 EPUB / PDF；删除书籍是软删除，不会删除原始文件。
 
 ---
 

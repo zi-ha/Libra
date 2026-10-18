@@ -45,8 +45,8 @@ services:
     volumes:
       # 数据目录：建议和本 yaml 放在同一目录
       - ./data:/data
-      # 书籍目录：改成你自己的 NAS 路径；只读挂载
-      - /volume1/books:/books:ro
+      # 书籍目录：需要可写，管理员修改元数据时会写回 EPUB / PDF
+      - /volume1/books:/books
 
     # 内存紧张可以改成 256m
     mem_limit: 512m

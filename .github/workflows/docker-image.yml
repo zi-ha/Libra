@@ -6,7 +6,7 @@ name: Docker Image & Release
 #
 # 版本号只有一个来源：main.go 里的 var version = "x.y.z"。
 # 手动运行后：
-#   1. 构建 linux/amd64 + linux/arm64 镜像并推送到 GHCR
+#   1. 构建 linux/amd64 + linux/arm64 镜像并推送到 GHCR 与 Docker Hub
 #   2. 用同一个版本号创建 / 更新 GitHub Release，并上传 Linux 二进制
 
 on:
@@ -103,11 +103,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Check Docker Hub secrets
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+            echo "::error::请在仓库 Secrets 中配置 DOCKERHUB_USERNAME 和 DOCKERHUB_TOKEN"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ steps.image.outputs.name }}
+          images: |
+            ghcr.io/${{ steps.image.outputs.name }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/libra
           tags: |
             type=raw,value=${{ needs.version.outputs.version }}
             type=raw,value=${{ needs.version.outputs.tag }}

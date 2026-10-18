@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"libra/internal/bookmeta"
 	"libra/internal/store"
 )
 
@@ -240,6 +241,16 @@ func (s *Server) updateBookMetadata(c *gin.Context) {
 		return
 	}
 
+	b, err := s.st.GetBook(id)
+	if err != nil {
+		fail(c, 404, "书籍不存在")
+		return
+	}
+	// 先写回源文件，成功后再更新数据库；文件不可写时不要制造"数据库改了、文件没改"的状态。
+	if err := bookmeta.Write(b.Path, b.Format, title, author); err != nil {
+		fail(c, 500, "写入源文件失败: "+err.Error())
+		return
+	}
 	if err := s.st.UpdateBookManualMeta(id, title, author); err != nil {
 		if err == store.ErrNotFound {
 			fail(c, 404, "书籍不存在")
@@ -248,7 +259,7 @@ func (s *Server) updateBookMetadata(c *gin.Context) {
 		failErr(c, 500, "保存书籍元数据失败", err)
 		return
 	}
-	b, err := s.st.GetBook(id)
+	b, err = s.st.GetBook(id)
 	if err != nil {
 		failErr(c, 500, "读取书籍失败", err)
 		return

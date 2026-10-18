@@ -1414,7 +1414,7 @@
               'value="' + esc(b.author || '') + '" placeholder="未知作者">' +
           '</div>' +
           '<div class="alert info">' + svg(ICONS.info) +
-            '<span>保存后会锁定这本书的书名与作者，后续扫描不会用文件内嵌元数据覆盖。</span></div>' +
+            '<span>保存后会同时写入 EPUB / PDF 源文件，并锁定数据库元数据；需要书库目录具有写权限。</span></div>' +
           '<div id="bm-error" class="alert error u-hidden" style="margin-top:14px"></div>' +
         '</div>' +
         '<div class="modal-foot">' +

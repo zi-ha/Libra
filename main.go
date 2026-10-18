@@ -17,7 +17,7 @@ import (
 )
 
 // version 会在构建时通过 -ldflags 覆盖。
-var version = "1.0.0"
+var version = "1.0.1"
 
 const usage = `Libra - 轻量电子书管理系统
 

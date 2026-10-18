@@ -108,6 +108,11 @@ func (q *BookQuery) where() (string, []any) {
 
 func (q *BookQuery) orderBy() string {
 	var col string
+	// natural 是"按书名里的数字大小排"：默认的 ORDER BY title 是字符串序，
+	// 10 会排在 1、2 前面。这里把书名拆成"文字段 / 数字段"两列，先比文字
+	// 再比数字，于是 卷1 < 卷2 < 卷10，中英文混合的书名也都能排对。
+	// SQLite 的字符串比较本身是逐字节的，正好按中文的 UTF-8 码位排序，
+	// 与"按拼音"略有出入，但至少稳定且不会出现 10 在 1 前面。
 	switch strings.ToLower(strings.TrimSpace(q.Sort)) {
 	case "author":
 		col = "b.author"
@@ -117,6 +122,17 @@ func (q *BookQuery) orderBy() string {
 		col = "b.updated_at"
 	case "size":
 		col = "b.size"
+	case "title":
+		col = "b.title"
+	case "natural":
+		dir := "ASC"
+		if q.Desc {
+			dir = "DESC"
+		}
+		// 文字段 → 数字段 → 原书名 → id，四层兜底，分页顺序始终稳定。
+		return fmt.Sprintf(
+			" ORDER BY natural_text(b.title) %s, COALESCE(natural_num(b.title), 0) %s, b.title %s, b.id %s",
+			dir, dir, dir, dir)
 	default:
 		col = "b.title"
 	}
@@ -127,6 +143,13 @@ func (q *BookQuery) orderBy() string {
 	// 加 id 作为兜底排序键，保证分页结果稳定。
 	return fmt.Sprintf(" ORDER BY %s %s, b.id %s", col, dir, dir)
 }
+
+// naturalTextSQL / naturalNumSQL 见 store.go 里注册的两个 SQLite 自定义函数。
+const (
+	naturalTextFn = "natural_text"
+	naturalNumFn  = "natural_num"
+)
+
 
 // ListBooks 分页查询书籍，同时返回符合条件的总数。
 func (s *Store) ListBooks(q BookQuery) ([]Book, int, error) {

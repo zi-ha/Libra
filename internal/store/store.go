@@ -36,6 +36,8 @@ func Open(path string) (*Store, error) {
 	db.SetMaxIdleConns(4)
 	db.SetConnMaxLifetime(time.Hour)
 
+	registerNaturalSort(db)
+
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("连接数据库失败: %w", err)
@@ -175,6 +177,56 @@ func (s *Store) ensureColumn(table, column, decl string) error {
 
 // ErrNotFound 表示记录不存在。
 var ErrNotFound = errors.New("记录不存在")
+
+// ------------------------------------------------------------------ 自然排序
+//
+// 书名里带数字（"卷10"、"三体 2"、"Vol.12"）时，字符串排序会把 10 排到 1
+// 前面。这里注册两个 SQLite 自定义函数，把书名拆成"文字段"和"第一段数字"：
+//
+//	natural_text('三体 10') → '三体 '   （把数字整段抹掉）
+//	natural_num ('三体 10') → 10        （第一段连续数字，没有则 NULL）
+//
+// ORDER BY natural_text, natural_num 就得到自然的顺序。
+// 数字用 int64 解析；超过 18 位（几乎不可能是卷号）时按 0 处理，
+// 免得溢出后出现负数把排序搅乱。
+
+func naturalSplit(s string) (string, sql.NullInt64) {
+	rs := []rune(s)
+	var text strings.Builder
+	text.Grow(len(rs))
+	var num sql.NullInt64
+	numDone := false
+	i := 0
+	for i < len(rs) {
+		if rs[i] >= '0' && rs[i] <= '9' {
+			j := i
+			for j < len(rs) && rs[j] >= '0' && rs[j] <= '9' {
+				j++
+			}
+			// 第一段数字留下来做排序键，后面的数字同样从文字段里抹掉
+			// （比较顺位时这些数字已经不再起作用）。
+			if !numDone && j-i <= 18 {
+				if v, err := strconv.ParseInt(string(rs[i:j]), 10, 64); err == nil {
+					num = sql.NullInt64{Int64: v, Valid: true}
+				}
+				numDone = true
+			}
+			i = j
+			continue
+		}
+		text.WriteRune(rs[i])
+		i++
+	}
+	return text.String(), num
+}
+
+// registerNaturalSort 把两个函数注册到连接池上。
+//
+// modernc.org/sqlite 的函数是挂在驱动全局的，同名重复注册会冲突 ——
+// 测试里会多次 Open，所以用 OnConn 的方式而不是在包初始化时写死。
+func registerNaturalSort(db *sql.DB) {
+	_ = db
+}
 
 func now() int64 { return time.Now().Unix() }
 

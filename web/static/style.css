@@ -853,50 +853,6 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .hero-dot:hover { background: rgba(255, 255, 255, .6); }
 .hero-dot.on { width: 20px; background: #fff; }
 
-/* 管理员在横幅右上角的小工具：换一批 / 数据源。
-   半透明玻璃小圆钮，和左右翻页按钮同一套材质，但更小、更低调 ——
-   它们不属于内容，只是给管理员留的一个入口。 */
-.hero-tools {
-  position: absolute; z-index: 5; top: 14px; right: 16px;
-  display: flex; gap: 6px;
-}
-.hero-tool {
-  width: 30px; height: 30px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid rgba(255, 255, 255, .18);
-  border-radius: 50%;
-  background: rgba(10, 12, 16, .42);
-  color: rgba(244, 246, 250, .82);
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
-}
-.hero-tool:hover {
-  background: rgba(18, 22, 30, .82);
-  border-color: rgba(255, 255, 255, .38);
-  color: #fff;
-}
-.hero-tool:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px; }
-.hero-tool svg { width: 15px; height: 15px; }
-
-/* 横幅空态：数据源里一本书都没有时，给管理员一个安静的去处。
-   普通成员看不到这块（脚本直接不渲染）。 */
-.hero-empty { display: flex; align-items: center; justify-content: center; }
-.hero-empty-inner {
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  padding: 0 24px; text-align: center; color: var(--text-2);
-}
-.hero-empty-icon {
-  width: 46px; height: 46px; margin-bottom: 6px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 14px; background: var(--surface-3); color: var(--text-2);
-}
-.hero-empty-icon svg { width: 22px; height: 22px; }
-.hero-empty-inner h2 { font-size: 16px; font-weight: 650; color: var(--text); }
-.hero-empty-inner p { font-size: 12.5px; color: var(--text-3); line-height: 1.7; max-width: 380px; }
-.hero-empty-inner .btn { margin-top: 12px; }
-
 /* 横幅左右翻页按钮：压在封面糊底上，半透明玻璃圆钮。
    左右各留 10px，正文区有 48px 内边距，所以不会盖住封面与文字。 */
 .hero-nav {
@@ -1645,13 +1601,79 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   border-top: 1px solid var(--border);
 }
 .modal-foot.split { justify-content: space-between; align-items: center; }
-/* 面板高度超过一屏时，只滚中间那一块，标题和底部按钮始终在位 */
-.modal-panel.featured-panel { display: flex; flex-direction: column; max-height: calc(100vh - 48px); }
-.modal-panel.featured-panel .modal-body { overflow-y: auto; }
 
-/* ------------------------------------------------------------------ 横幅数据源面板
-   上半部分是每日推荐书单（可拖动排序），下半部分是随机书库的多选小胶囊。
-   都用界面里已有的令牌，不引入新的颜色。 */
+/* ------------------------------------------------------------------ 横幅数据源（管理后台）
+   左边是每日推荐书单（可拖动排序）+ 随机书库多选，右边是一块"和首页长得一样"的预览。
+   整页布置，不再用弹窗：数据源属于系统设置，归在管理后台里。
+
+   版式跟"账号管理 / 书库"一致：页头 + 两栏。窄屏时预览折到下面。 */
+
+.feat-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 22px;
+  align-items: start;
+}
+.feat-main {
+  min-width: 0;
+  padding: 20px 22px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+/* 右栏：预览 + 说明，吸顶跟随 */
+.feat-side { position: sticky; top: calc(var(--topbar-h) + 12px); }
+.feat-side-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-bottom: 10px;
+}
+.feat-side-head h3 { font-size: 13px; font-weight: 650; color: var(--text-2); }
+.feat-side-sub { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.feat-preview {
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.feat-preview .hero {
+  margin: 0; border-radius: 0;
+  height: 300px;
+}
+/* 窄屏的 .hero { height: 220px } 会压过上面的 300，这里显式提回来 */
+.feat-preview .hero.is-preview { height: 300px; }
+.feat-preview .hero-inner {
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 18px 34px;
+  align-items: center;
+  justify-content: center;
+}
+.feat-preview .hero-thumb { width: 84px; height: 126px; }
+.feat-preview .hero-copy { align-items: center; text-align: center; max-width: none; }
+.feat-preview .hero-title span { font-size: 17px; }
+.feat-preview .hero-title.is-long span { font-size: 15px; }
+.feat-preview .hero-title.is-xlong span { font-size: 14px; }
+.feat-preview .hero-sub { font-size: 12.5px; margin-top: 6px; }
+.feat-preview .hero-meta { justify-content: center; margin-top: 8px; font-size: 11px; gap: 6px 10px; }
+.feat-preview .hero-meta .dot { display: none; }
+.feat-preview .hero-actions { margin-top: 12px; }
+.feat-preview .hero-actions .btn { height: 32px; padding: 0 13px; font-size: 12px; }
+.feat-preview .hero-nav { display: none; }
+.feat-preview-dots { right: 50%; transform: translateX(50%); bottom: 10px; }
+.feat-preview-dots .hero-dot { pointer-events: none; }
+.feat-preview-dots .hero-dot:first-child { width: 14px; background: #fff; }
+.feat-preview-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  height: 300px; padding: 0 24px; text-align: center;
+  color: var(--text-3); font-size: 12.5px;
+}
+.feat-preview-empty svg { width: 24px; height: 24px; color: var(--text-2); }
+.feat-side-note {
+  display: flex; gap: 8px; align-items: flex-start;
+  margin-top: 10px; font-size: 11.5px; color: var(--text-3); line-height: 1.6;
+}
+.feat-side-note svg { width: 14px; height: 14px; margin-top: 2px; flex: none; }
 
 .feat-block { margin-bottom: 22px; }
 .feat-block:last-of-type { margin-bottom: 14px; }
@@ -2192,10 +2214,19 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
   .hero-dots .hero-dot.on::after {
     content: attr(data-count);
   }
-  /* 管理员工具挪到左下角：右上角留给"入库时间"那一行字，别压住它 */
-  .hero-tools { top: auto; bottom: 8px; left: 18px; right: auto; }
-  .hero-tool { width: 26px; height: 26px; }
-  .hero-tool svg { width: 13px; height: 13px; }
+  /* 窄屏：预览折到下面，吸顶取消（否则它会挡住滚动的设置区） */
+  .feat-layout { grid-template-columns: minmax(0, 1fr); }
+  .feat-side { position: static; order: 2; }
+  .feat-main { padding: 16px 16px; }
+  .feat-cand-meta { display: none; }
+  /* 预览在窄屏里宽高比约 5:4，300px 太高了；同时也别被首页横幅的 220px 规则带动 */
+  .feat-preview .hero,
+  .feat-preview .hero.is-preview { height: 240px; }
+  .feat-preview .hero-inner { gap: 8px; padding: 14px 16px 40px; }
+  .feat-preview .hero-thumb { width: 72px; height: 108px; }
+  .feat-preview .hero-title span { font-size: 16px; }
+  .feat-preview .hero-meta { display: none; }
+  .feat-preview .hero-actions { margin-top: 10px; }
   .rail-btn { width: 34px; height: 34px; }
   .rail-btn.prev { left: -12px; }
   .rail-btn.next { right: -12px; }

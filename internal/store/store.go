@@ -201,6 +201,9 @@ func naturalSplit(s string) (string, sql.NullInt64) {
 	rs := []rune(s)
 	var text strings.Builder
 	text.Grow(len(rs))
+	// 分隔符（空格、冒号、括号…）不参与比较：这样"三体1"与"三体 1"排在
+	// 同一个位置，只按数字区分先后。字母与汉字保留，仍然是先比文字。
+	joiners := " \t\u3000:：·・-_/|,，.。()（）[]【】<>《》、"
 	var num sql.NullInt64
 	numDone := false
 	i := 0
@@ -221,7 +224,9 @@ func naturalSplit(s string) (string, sql.NullInt64) {
 			i = j
 			continue
 		}
-		text.WriteRune(rs[i])
+		if !strings.ContainsRune(joiners, rs[i]) {
+			text.WriteRune(rs[i])
+		}
 		i++
 	}
 	return text.String(), num

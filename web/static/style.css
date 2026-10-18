@@ -44,6 +44,15 @@
   --text:           #eef0f4;
   --text-2:         #a3a9b4;
   --text-3:         #6e747f;
+  /* 第四级：只在"辅助信息"上用（作者名、计数、路径、系列副标题）。
+     比 --text-3 再淡一档，让标题与说明之间拉开明显层次。 */
+  --text-4:         #565c66;
+
+  /* 封面"画廊"材质：一道极细的高光描边，外加几乎看不见的投影 ——
+     不靠阴影浮起来，只让封面像压在纸面上的一层实物。 */
+  --cover-line:     rgba(255, 255, 255, .09);
+  --cover-line-hi:  rgba(255, 255, 255, .2);
+  --cover-shadow:   0 1px 1px rgba(0, 0, 0, .38);
 
   /* 主行动色：Emby 的蓝。界面里只有主按钮、选中态、播放键用它。 */
   --accent:         #3ea6ff;
@@ -122,6 +131,11 @@
   --text:           #16181d;
   --text-2:         #565c68;
   --text-3:         #8a909b;
+  --text-4:         #a4a9b2;
+
+  --cover-line:     rgba(16, 18, 24, .1);
+  --cover-line-hi:  rgba(16, 18, 24, .28);
+  --cover-shadow:   0 1px 2px rgba(16, 18, 24, .12);
 
   --accent:         #0a72d8;
   --accent-hi:      #0b63bb;
@@ -474,20 +488,22 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .nav-toggle:hover { color: var(--text); border-color: var(--border-2); }
 .nav-toggle svg { width: 18px; height: 18px; }
 
-/* 面包屑 + 页内标题：顶栏只放"我在哪"和工具 */
+/* 面包屑 + 页内标题：顶栏只放"我在哪"和工具。
+   标题 18px/650，副标题 12.5px 且用最淡的一级灰 —— 两者不争。 */
 .crumb {
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex; align-items: baseline; gap: 9px;
   min-width: 0; flex: 1;
 }
 .crumb h1 {
-  font-size: 17px; font-weight: 650; letter-spacing: -.01em;
+  font-size: 18px; font-weight: 650; letter-spacing: -.018em;
+  color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .crumb .crumb-sub {
-  font-size: 12.5px; color: var(--text-3);
+  font-size: 12.5px; color: var(--text-4); font-weight: 450;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.crumb .crumb-sep { color: var(--text-3); opacity: .6; }
+.crumb .crumb-sep { color: var(--text-4); opacity: .7; }
 
 /* 没有副标题（首页、书籍详情、管理页）时不留那个"·" */
 .topbar.no-sub .crumb-sep,
@@ -655,18 +671,30 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 }
 
 /* ------------------------------------------------------------------ 页头
-   内容区里的标题块。标题大、粗、无衬线，下面一行小字放统计与筛选状态。 */
+   内容区里的标题块。标题大、粗、无衬线，下面一行小字放统计与筛选状态。
+
+   字号只有五级，界面里任何标题都能对应到其中一级：
+     28  页面主标题（书库名、管理页名、详情页书名）
+     19  顶级区块（首页分区、管理后台里的卡片标题）
+     15  次级区块（横幅、系列名）
+     13.5 卡片书名
+     12.5 正文 / 辅助信息
+   辅助信息的颜色只到 --text-3，再淡就用 --text-4：它不该和标题抢眼。 */
 
 .page-head {
   display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap;
-  margin: 14px 0 22px;
+  margin: 18px 0 24px;
 }
 .page-head .grow { flex: 1; min-width: 0; }
 .page-title {
-  font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2;
+  font-size: 28px; font-weight: 700; letter-spacing: -.028em; line-height: 1.12;
+  color: var(--text);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.page-sub { font-size: 12.5px; color: var(--text-3); margin-top: 6px; }
+.page-sub {
+  font-size: 12.5px; color: var(--text-4); margin-top: 7px;
+  font-weight: 450; letter-spacing: .002em;
+}
 .page-tools { display: flex; align-items: center; gap: 8px; flex: none; }
 
 /* ------------------------------------------------------------------ 精选横幅
@@ -982,21 +1010,23 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 
 .section-head {
   display: flex; align-items: center; gap: 12px;
-  margin: 30px 0 14px;
+  margin: 34px 0 16px;
 }
-.section-head h2 { font-size: 16px; font-weight: 700; letter-spacing: -.01em; }
+.section-head h2 { font-size: 19px; font-weight: 700; letter-spacing: -.022em; color: var(--text); }
 .section-head .count {
-  font-size: 12px; font-weight: 600; color: var(--text-3);
+  font-size: 11.5px; font-weight: 600; color: var(--text-4);
+  font-variant-numeric: tabular-nums;
   padding: 1px 7px; border-radius: var(--r-pill); background: var(--surface-2);
 }
 .section-head .grow { flex: 1; }
 .section-head a.more {
-  font-size: 12.5px; font-weight: 600; color: var(--accent);
+  font-size: 12.5px; font-weight: 550; color: var(--text-3);
   display: inline-flex; align-items: center; gap: 4px;
   white-space: nowrap;
+  transition: color .15s var(--ease);
 }
 .section-head a.more svg { width: 14px; height: 14px; }
-.section-head a.more:hover { color: var(--accent-hi); }
+.section-head a.more:hover { color: var(--text); }
 
 /* 库名那一块：图标块 + 名字 + 本数，整块可点 */
 .rail-title {
@@ -1124,17 +1154,28 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 /* 换页换库时保留旧卡片并轻微压暗，而不是先清空成骨架 */
 .grid.is-busy { opacity: .45; transition: opacity .12s var(--ease); }
 
+/* 卡片 = 封面 + 书名 + 作者，走"画廊"而不是"表格"：
+   封面是主体，四周只留一道 1px 高光描边，投影压到几乎看不见 ——
+   不靠浮起来的卡片制造层次，靠封面本身和留白。
+   hover 只浮出操作按钮、书名提亮，不做上浮、不加深阴影。 */
+
 .card { display: block; position: relative; min-width: 0; }
 
 .card-cover {
   position: relative;
   aspect-ratio: 2 / 3;
-  border-radius: 12px;
+  border-radius: var(--r-cover);
   overflow: hidden;
   background: var(--surface-2);
   isolation: isolate;
+  box-shadow: var(--cover-shadow), 0 0 0 1px var(--cover-line);
+  transition: box-shadow .18s var(--ease);
 }
-/* hover 只浮出操作按钮，不加阴影、不上浮 */
+.card:hover .card-cover,
+.card:focus-visible .card-cover {
+  /* 只是那道描边亮一点，位置、大小、阴影都不动 */
+  box-shadow: var(--cover-shadow), 0 0 0 1px var(--cover-line-hi);
+}
 
 .card-cover img {
   position: absolute; inset: 0; width: 100%; height: 100%;
@@ -1213,16 +1254,20 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .card-action.primary { background: var(--accent); color: #fff; }
 .card-action.primary:hover { background: var(--accent-hi); }
 
-.card-body { padding: 10px 2px 0; }
+.card-body { padding: 12px 1px 0; }
 .card-title {
-  font-size: 13.5px; font-weight: 600; line-height: 1.38; letter-spacing: -.005em;
+  font-size: 13.5px; font-weight: 600; line-height: 1.4; letter-spacing: -.012em;
+  color: var(--text);
   transition: color .15s var(--ease);
   /* 书名最多两行，两行高度固定 —— 一长一短才不会让下一排的封面参差不齐 */
-  min-height: 2.76em;
+  min-height: 2.8em;
 }
-.card:hover .card-title { color: var(--accent); }
-.card-author { font-size: 12px; color: var(--text-3); margin-top: 2px; }
-.card-meta { font-size: 11.5px; color: var(--text-3); margin-top: 3px; }
+.card:hover .card-title { color: var(--text); opacity: .86; }
+.card-author {
+  font-size: 12px; font-weight: 450; color: var(--text-4);
+  margin-top: 3px; letter-spacing: .002em;
+}
+.card-meta { font-size: 11.5px; color: var(--text-4); margin-top: 3px; }
 
 /* 骨架屏 */
 .skeleton-card .sk-cover {
@@ -1344,11 +1389,11 @@ body.view-detail .view > .back-link { display: none; }
 .card-badge.series svg { width: 11px; height: 11px; }
 [data-theme="light"] .card-badge.series { background: rgba(255, 255, 255, .88); color: #1c1f26; }
 .card-series-group .card-cover::after {
-  /* 合并卡叠一层很淡的暗角，和单本书卡区分开，但不抢封面 */
+  /* 合并卡只在自己的描边上加一点强调色，不额外加阴影 */
   content: ""; position: absolute; inset: 0; pointer-events: none;
-  box-shadow: inset 0 0 0 2px var(--accent-line);
   border-radius: inherit;
-  opacity: .55;
+  box-shadow: inset 0 0 0 1px var(--accent-line);
+  opacity: .6;
   transition: opacity .18s var(--ease);
 }
 .card-series-group:hover .card-cover::after { opacity: 1; }
@@ -1402,10 +1447,11 @@ body.view-detail .view > .back-link { display: none; }
 .detail-cover .fallback { z-index: 0; }
 .detail-main { flex: 1; min-width: 0; padding-top: 4px; }
 .detail-title {
-  font-size: 32px; font-weight: 750; letter-spacing: -.025em; line-height: 1.18;
+  font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1.14;
+  color: var(--text);
   word-break: break-word;
 }
-.detail-author { font-size: 14px; color: var(--text-2); margin-top: 10px; }
+.detail-author { font-size: 13.5px; color: var(--text-3); margin-top: 12px; letter-spacing: .002em; }
 .detail-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
 
 .tag {
@@ -1953,10 +1999,10 @@ body.view-detail .view > .back-link { display: none; }
 }
 .series-icon svg { width: 15px; height: 15px; }
 .series-name {
-  font-size: 14px; font-weight: 650; letter-spacing: -.01em; color: var(--text);
+  font-size: 15px; font-weight: 650; letter-spacing: -.018em; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.series-count { font-size: 11.5px; color: var(--text-3); }
+.series-count { font-size: 11.5px; color: var(--text-4); font-variant-numeric: tabular-nums; }
 
 .input {
   width: 100%; height: 40px; padding: 0 13px;

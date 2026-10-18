@@ -143,9 +143,9 @@ func (q *BookQuery) where() (string, []any) {
 
 func (q *BookQuery) orderBy() string {
 	var col string
-	// natural 是"按书名里的数字大小排"：默认的 ORDER BY title 是字符串序，
-	// 10 会排在 1、2 前面。这里把书名拆成"文字段 / 数字段"两列，先比文字
-	// 再比数字，于是 卷1 < 卷2 < 卷10，中英文混合的书名也都能排对。
+	// 书名相关的排序都走"自然排序"：把书名拆成"文字段 / 数字段"两列，先比文字
+	// 再比数字，于是 卷1 < 卷2 < 卷10。默认的字符串序会把 10 排到 1、2 前面，
+	// 对"三体1 / 三体2 / 三体10"这种卷号书名完全没法看，所以 title 也走这一套。
 	// SQLite 的字符串比较本身是逐字节的，正好按中文的 UTF-8 码位排序，
 	// 与"按拼音"略有出入，但至少稳定且不会出现 10 在 1 前面。
 	switch strings.ToLower(strings.TrimSpace(q.Sort)) {
@@ -157,9 +157,7 @@ func (q *BookQuery) orderBy() string {
 		col = "b.updated_at"
 	case "size":
 		col = "b.size"
-	case "title":
-		col = "b.title"
-	case "natural":
+	case "title", "natural":
 		dir := "ASC"
 		if q.Desc {
 			dir = "DESC"

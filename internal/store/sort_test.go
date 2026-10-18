@@ -33,7 +33,7 @@ func TestNaturalSortTenthAfterSecond(t *testing.T) {
 		}
 	}
 
-	// 先确认字符串排序确实会把 10 排在 1、2 前面（复现用户看到的问题）
+	// 先确认默认的「书名 A→Z」（title）也已经是自然序：10 不会再排在 1、2 前面
 	plain, _, err := st.ListBooks(BookQuery{Sort: "title", PageSize: 50})
 	if err != nil {
 		t.Fatal(err)
@@ -42,8 +42,8 @@ func TestNaturalSortTenthAfterSecond(t *testing.T) {
 	for _, b := range plain {
 		plainOrder = append(plainOrder, b.Title)
 	}
-	if plainOrder[0] != "Vol.12" {
-		t.Logf("字符串序: %v（SQLite 版本差异不影响后面的断言）", plainOrder)
+	if plainOrder[0] != "Vol.3" {
+		t.Fatalf("默认书名排序不应把 Vol.12 排到最前：%v", plainOrder)
 	}
 
 	got, _, err := st.ListBooks(BookQuery{Sort: "natural", PageSize: 50})
@@ -85,9 +85,9 @@ func TestNaturalSplit(t *testing.T) {
 		num  bool
 		val  int64
 	}{
-		{"三体 10", "三体 ", true, 10},
-		{"卷1", "卷", true, 1},
-		{"Vol.12", "Vol.", true, 12},
+		{"三体 10", "三体", true, 10},
+		{"三体1", "三体", true, 1},
+		{"Vol.12", "Vol", true, 12},
 		{"没有数字", "没有数字", false, 0},
 		{"a1b2", "ab", true, 1},
 	}

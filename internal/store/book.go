@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -18,12 +19,15 @@ type Book struct {
 	Path        string `json:"-"` // 绝对路径，不对外暴露
 	Dir         string `json:"-"`
 	Filename    string `json:"filename"`
-	Title       string `json:"title"`
-	Author      string `json:"author"`
-	Format      string `json:"format"` // epub / pdf
-	Size        int64  `json:"size"`
-	Mtime       int64  `json:"mtime"`
-	Cover       string `json:"cover"` // 封面文件名（相对封面目录）
+	// RelPath 是相对书库根目录的路径，由 ListBooksWithRel 填充；
+	// 列表接口不带它（Path 同理），避免把服务器目录结构暴露给前端。
+	RelPath string `json:"-"`
+	Title   string `json:"title"`
+	Author  string `json:"author"`
+	Format  string `json:"format"` // epub / pdf
+	Size    int64  `json:"size"`
+	Mtime   int64  `json:"mtime"`
+	Cover   string `json:"cover"` // 封面文件名（相对封面目录）
 	// CoverState 记录封面提取结果（ok / none / failed），增量扫描据此决定是否重试。
 	CoverState string    `json:"-"`
 	MetaLocked int       `json:"-"` // 1 = 管理员手动改过书名/作者，扫描不覆盖
@@ -61,11 +65,29 @@ type BookQuery struct {
 	LibraryID int64  // 0 表示全部书库
 	Search    string // 匹配书名或作者
 	Format    string // "" 全部 / epub / pdf
-	Sort      string // title / author / created / size / updated
+	Sort      string // title / natural / author / created / size / updated
 	Desc      bool
 	Page      int
 	PageSize  int
+
+	// SeriesGroup 非空时按"系列作品聚合"的归属过滤：
+	//   SeriesNone（"__none__"）  只要散书（不参与聚合的书）
+	//   "三体系列"                只要归在「三体系列」下的书
+	// 空字符串表示不过滤。
+	SeriesGroup string
+
+	// SeriesIDs 非空时只返回这些 ID 的书（系列筛选用）。
+	// 调用方先算好归属拿到 ID，再让 SQL 过滤并分页，避免把整页之后的
+	// 书全读到内存里再筛；空切片表示"没有匹配"，与 nil 不同。
+	SeriesIDs []int64
+
+	// WithRelPath 为真时额外带出"相对书库根目录"的路径，
+	// 供调用方按目录层级计算系列归属（列表接口不需要）。
+	WithRelPath bool
 }
+
+// SeriesNone 是 SeriesGroup 里表示"散书"的保留值，正常文件夹名不会用它。
+const SeriesNone = "__none__"
 
 func (q *BookQuery) normalize() {
 	if q.Page < 1 {
@@ -99,6 +121,19 @@ func (q *BookQuery) where() (string, []any) {
 		like := "%" + escapeLike(term) + "%"
 		conds = append(conds, `(b.title LIKE ? ESCAPE '\' OR b.author LIKE ? ESCAPE '\' OR b.filename LIKE ? ESCAPE '\')`)
 		args = append(args, like, like, like)
+	}
+	if q.SeriesIDs != nil {
+		if len(q.SeriesIDs) == 0 {
+			// 空集合：明确表示"没有匹配的书"，不能退化成"不过滤"。
+			conds = append(conds, "1 = 0")
+		} else {
+			placeholders := make([]string, len(q.SeriesIDs))
+			for i, id := range q.SeriesIDs {
+				placeholders[i] = "?"
+				args = append(args, id)
+			}
+			conds = append(conds, "b.id IN ("+strings.Join(placeholders, ",")+")")
+		}
 	}
 	if len(conds) == 0 {
 		return "", args
@@ -150,7 +185,6 @@ const (
 	naturalNumFn  = "natural_num"
 )
 
-
 // ListBooks 分页查询书籍，同时返回符合条件的总数。
 func (s *Store) ListBooks(q BookQuery) ([]Book, int, error) {
 	q.normalize()
@@ -180,6 +214,77 @@ func (s *Store) ListBooks(q BookQuery) ([]Book, int, error) {
 		out = append(out, *b)
 	}
 	return out, total, rows.Err()
+}
+
+// ListBooksWithRel 与 ListBooks 一样，但额外查一列 path，调用方用它算相对路径
+// （系列聚合需要按目录层级判断归属）。排序与分页仍然交给数据库完成 ——
+// 书多了以后在内存里重排整表会白白吃掉几百毫秒。
+func (s *Store) ListBooksWithRel(q BookQuery, roots map[int64]string) ([]Book, int, error) {
+	q.normalize()
+	q.WithRelPath = true
+	whereSQL, args := q.where()
+
+	var total int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM books b`+whereSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := `SELECT ` + bookColumns + ` FROM books b LEFT JOIN libraries l ON l.id = b.library_id` +
+		whereSQL + q.orderBy() + ` LIMIT ? OFFSET ?`
+	args = append(args, q.PageSize, (q.Page-1)*q.PageSize)
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := make([]Book, 0, q.PageSize)
+	for rows.Next() {
+		b, err := scanBook(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		// 相对书库根目录的路径：系列聚合按它数深度、取父文件夹名。
+		// 取不到相对路径时退回绝对路径，最坏只是不参与聚合。
+		rel := b.Path
+		if root, ok := roots[b.LibraryID]; ok && root != "" {
+			if r, err := filepath.Rel(root, b.Path); err == nil {
+				rel = r
+			}
+		}
+		b.RelPath = filepath.ToSlash(rel)
+		out = append(out, *b)
+	}
+	return out, total, rows.Err()
+}
+
+// BookPathsByIDs 返回 ID → 绝对路径，供系列聚合按目录层级算归属。
+func (s *Store) BookPathsByIDs(ids []int64) (map[int64]string, error) {
+	out := make(map[int64]string, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	rows, err := s.db.Query(`SELECT id, path FROM books WHERE id IN (`+strings.Join(placeholders, ",")+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		var p string
+		if err := rows.Scan(&id, &p); err != nil {
+			return nil, err
+		}
+		out[id] = p
+	}
+	return out, rows.Err()
 }
 
 // GetBook 按 ID 查询单本。

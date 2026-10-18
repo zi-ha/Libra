@@ -5,12 +5,15 @@ package store
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"fmt"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // 注册 sqlite 驱动
+	"modernc.org/sqlite" // 注册 sqlite 驱动，并提供标量函数注册接口
 )
 
 // Store 是数据库句柄的薄封装。
@@ -83,7 +86,8 @@ func (s *Store) Migrate() error {
 			created_at   INTEGER NOT NULL,
 			updated_at   INTEGER NOT NULL,
 			last_scan_at INTEGER NOT NULL DEFAULT 0,
-			last_scan_state TEXT NOT NULL DEFAULT ''
+			last_scan_state TEXT NOT NULL DEFAULT '',
+			series_group INTEGER NOT NULL DEFAULT 0
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS books (
@@ -140,6 +144,9 @@ func (s *Store) Migrate() error {
 	}
 	if err := s.ensureColumn("books", "deleted", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("迁移 books.deleted 失败: %w", err)
+	}
+	if err := s.ensureColumn("libraries", "series_group", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return fmt.Errorf("迁移 libraries.series_group 失败: %w", err)
 	}
 	return nil
 }
@@ -220,12 +227,43 @@ func naturalSplit(s string) (string, sql.NullInt64) {
 	return text.String(), num
 }
 
-// registerNaturalSort 把两个函数注册到连接池上。
+// registerNaturalSort 注册自然排序用的两个 SQLite 函数。
 //
-// modernc.org/sqlite 的函数是挂在驱动全局的，同名重复注册会冲突 ——
-// 测试里会多次 Open，所以用 OnConn 的方式而不是在包初始化时写死。
+// modernc.org/sqlite 的函数表是进程级的，同名重复注册会返回错误（测试里会
+// 反复 Open 数据库）。所以这里忽略"已注册"错误：函数实现是纯函数，
+// 重复注册本来就等价。
 func registerNaturalSort(db *sql.DB) {
 	_ = db
+	_ = sqlite.RegisterDeterministicScalarFunction(naturalTextFn, 1,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			s, _ := sqliteString(args)
+			text, _ := naturalSplit(s)
+			return text, nil
+		})
+	_ = sqlite.RegisterDeterministicScalarFunction(naturalNumFn, 1,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			s, _ := sqliteString(args)
+			_, num := naturalSplit(s)
+			if !num.Valid {
+				return nil, nil
+			}
+			return num.Int64, nil
+		})
+}
+
+// sqliteString 把函数参数转成字符串；NULL 当作空串。
+func sqliteString(args []driver.Value) (string, bool) {
+	if len(args) == 0 || args[0] == nil {
+		return "", false
+	}
+	switch v := args[0].(type) {
+	case string:
+		return v, true
+	case []byte:
+		return string(v), true
+	default:
+		return fmt.Sprint(v), true
+	}
 }
 
 func now() int64 { return time.Now().Unix() }

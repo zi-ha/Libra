@@ -105,6 +105,13 @@
         <span class="brand-mark"><span class="seal-char">书</span></span>
       </a>
 
+      <!-- 只在书籍详情页出现的返回按钮：进了详情，顶栏不再显示书名与搜索框，
+           这里就是唯一的"回去"入口。 -->
+      <a href="javascript:history.back()" class="topbar-back" id="topbar-back" aria-label="返回">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg>
+        返回
+      </a>
+
       <div class="crumb">
         <h1 id="tb-title">全部书籍</h1>
         <span class="crumb-sep">·</span>
@@ -125,6 +132,8 @@
         <select id="sort" class="select hide-md" aria-label="排序">
           <option value="title:asc">书名 A→Z</option>
           <option value="title:desc">书名 Z→A</option>
+          <option value="natural:asc">书名（数字按大小）</option>
+          <option value="natural:desc">书名（数字按大小，倒序）</option>
           <option value="author:asc">作者 A→Z</option>
           <option value="created:desc">最近入库</option>
           <option value="created:asc">最早入库</option>

@@ -18,6 +18,9 @@ type Library struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 	LastScanAt    time.Time `json:"last_scan_at"`
 	LastScanState string    `json:"last_scan_state"`
+	// SeriesGroup 为真时，这座书库按「系列作品聚合」展示：
+	// 只把目录里最深一层的书按父文件夹名归成系列，更浅的是散书。
+	SeriesGroup bool `json:"series_group"`
 
 	// 冗余统计字段，由查询时联表算出，不落库。
 	BookCount int `json:"book_count"`
@@ -25,7 +28,7 @@ type Library struct {
 	PdfCount  int `json:"pdf_count"`
 }
 
-const libraryColumns = `l.id, l.name, l.path, l.icon, l.cover, l.created_at, l.updated_at, l.last_scan_at, l.last_scan_state,
+const libraryColumns = `l.id, l.name, l.path, l.icon, l.cover, l.created_at, l.updated_at, l.last_scan_at, l.last_scan_state, l.series_group,
 	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.deleted = 0), 0),
 	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.deleted = 0 AND b.format = 'epub'), 0),
 	COALESCE((SELECT COUNT(*) FROM books b WHERE b.library_id = l.id AND b.deleted = 0 AND b.format = 'pdf'), 0)`
@@ -34,7 +37,7 @@ func scanLibrary(row interface{ Scan(...any) error }) (*Library, error) {
 	var l Library
 	var created, updated, lastScan int64
 	if err := row.Scan(&l.ID, &l.Name, &l.Path, &l.Icon, &l.Cover, &created, &updated, &lastScan,
-		&l.LastScanState, &l.BookCount, &l.EpubCount, &l.PdfCount); err != nil {
+		&l.LastScanState, &l.SeriesGroup, &l.BookCount, &l.EpubCount, &l.PdfCount); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrNotFound
 		}
@@ -172,6 +175,36 @@ func (s *Store) HasLibraryWithPath(path string, excludeID int64) (bool, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT COUNT(*) FROM libraries WHERE path = ? AND id <> ?`, path, excludeID).Scan(&n)
 	return n > 0, err
+}
+
+// SetLibrarySeriesGroup 开关某座书库的「系列作品聚合」。
+// 关闭时只改这一列，书本身的记录一条都不动 —— 聚合本来就是展示层现算的。
+func (s *Store) SetLibrarySeriesGroup(id int64, on bool) error {
+	v := 0
+	if on {
+		v = 1
+	}
+	res, err := s.db.Exec(`UPDATE libraries SET series_group = ?, updated_at = ? WHERE id = ?`, v, now(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// LibraryRoots 返回"书库 ID → 根目录"，供系列聚合把绝对路径换成相对路径。
+func (s *Store) LibraryRoots() (map[int64]string, error) {
+	libs, err := s.ListLibraries()
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[int64]string, len(libs))
+	for _, l := range libs {
+		out[l.ID] = l.Path
+	}
+	return out, nil
 }
 
 // MarkLibraryScan 记录一次扫描的结果状态。

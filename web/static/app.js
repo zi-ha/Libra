@@ -307,6 +307,8 @@
     featured: null,     // 首页横幅本轮内容（每会话取一次，扫描 / 数据源变更后失效）
     featuredIdx: 0,
     featuredForce: false, // 下一次取横幅时跳过服务端一小时缓存（管理员点了"换一批"）
+    seriesOn: false,      // 当前书库是否启用了系列作品聚合（由列表接口返回）
+    seriesGroups: [],     // 当前书库里的系列（名称 + 张数），做筛选用
     heroTimer: null,
     libCovers: {},      // 书库宫格拼贴：libraryId -> [封面 URL]
     lastElapsed: 0,
@@ -528,6 +530,8 @@
   /* ------------------------------------------------------------------ 顶栏标题 */
 
   function setTopbar(title, sub) {
+    // 任何一次写标题都先回到默认形态，需要特殊形态的页面随后再调 setTopbarMode
+    setTopbarMode('');
     var t = $('#tb-title');
     var s = $('#tb-sub');
     if (t) t.textContent = title || 'Libra';
@@ -545,6 +549,19 @@
   function setTopbarTools(show) {
     var bar = $('#topbar');
     if (bar) bar.classList.toggle('page-topbar', !!show);
+  }
+
+  /* 顶栏的三种形态（互斥）：
+       detail  书籍详情：只留一个"返回"，书名就在下面的大标题里，搜索框不需要
+       wall    书库 / 全部书籍：页头已经写了大标题与路径，顶栏不再重复，只留搜索与排序
+       ''      其余页面：标题 + 副标题 + 工具
+     用 body 上的类同步，CSS 只需要看这两个类。 */
+  function setTopbarMode(mode) {
+    var bar = $('#topbar');
+    if (!bar) return;
+    bar.classList.toggle('is-detail', mode === 'detail');
+    bar.classList.toggle('is-wall', mode === 'wall');
+    document.body.classList.toggle('view-detail', mode === 'detail');
   }
 
   /* 面包屑之间那个"·"必须有副标题才有意义。
@@ -1559,6 +1576,10 @@
 
   /* ------------------------------------------------------------------ 封面墙 */
 
+  // 当前的系列筛选（"" 全部 / "none" 散书 / 系列名）。放在模块级而不是状态里：
+  // 它只属于眼前的这一次浏览，换库或换路由都该重置。
+  var seriesFilter = '';
+
   function currentLibraryName() {
     if (state.libraryId === -1) return '全部书籍';
     if (state.libraryId === 0) return '首页';
@@ -1566,13 +1587,8 @@
     return lib ? lib.name : '全部书籍';
   }
 
-  function wallSubtitle() {
-    if (state.libraryId > 0) {
-      var lib = libraryById(state.libraryId);
-      if (lib) return lib.path;
-    }
-    return '来自 ' + state.libraries.length + ' 个书库';
-  }
+  /* 注意：书库页不再显示目录路径。目录属于「书库管理」里的信息，
+     浏览书的时候只关心"这是哪座库"，顶栏写书名就够。 */
 
   function densitySegHTML() {
     var opts = [['s', ICONS.gridS, '小图'], ['m', ICONS.gridM, '中图'], ['l', ICONS.gridL, '大图']];
@@ -1595,21 +1611,16 @@
   }
 
   function wallQuerySig() {
-    return state.libraryId + '|' + state.q + '|' + state.format + '|' + state.sort;
+    return state.libraryId + '|' + state.q + '|' + state.format + '|' + state.sort + '|' + seriesFilter;
   }
 
   function renderWallShell() {
     var view = $('#view');
 
-    // 已经在封面墙里：只改文案，不重建 DOM。
-    // 搜索 / 筛选 / 换库都会走到这里，重建整块就会"闪一下"。
+    // 已经在封面墙里：只刷新顶栏与筛选条，不重建 DOM。
+    // 搜索 / 筛筛选 / 换库都会走到这里，重建整块就会"闪一下"。
     if (view.getAttribute('data-view') === 'wall' && $('#grid')) {
-      var title = $('#wall-title');
-      if (title) title.textContent = currentLibraryName();
-      var subEl = $('#wall-sub');
-      if (subEl) subEl.textContent = wallSubtitle();
-      setTopbar(currentLibraryName(), wallSubtitle());
-      setTopbarTools(true);
+      paintWallChrome();
       paintDensitySeg();
       return;
     }
@@ -1621,30 +1632,210 @@
       : '';
 
     view.setAttribute('data-view', 'wall');
+    // 书库名与封面尺寸按钮都在顶栏里，正文从第一行开始就是书
     view.innerHTML =
-      '<div class="page-head">' +
-        '<div class="grow">' +
-          '<h1 class="page-title" id="wall-title">' + esc(currentLibraryName()) + '</h1>' +
-          '<div class="page-sub" id="wall-sub">' + esc(wallSubtitle()) + '</div>' +
-        '</div>' +
-        '<div class="page-tools">' + densitySegHTML() + '</div>' +
-      '</div>' +
+      '<div class="series-bar u-hidden" id="series-bar" aria-label="当前系列"></div>' +
       '<div id="grid" class="grid">' + prefill + '</div>' +
       '<div id="empty" class="empty u-hidden"></div>' +
       '<div id="feed-foot" class="feed-foot u-hidden"></div>';
 
-    setTopbar(currentLibraryName(), wallSubtitle());
-    setTopbarTools(true);
+    seriesFilter = '';
+    paintWallChrome();
     bindDensitySeg();
+    bindSeriesOpen();
+  }
+
+  /* 封面墙的"顶栏部分"：书库名写进顶栏标题（不显示目录路径），
+     搜索与排序在右边，封面尺寸按钮紧挨着；正在看某个系列时，
+     顶栏标题变成「系列名 · 书库名」。
+     正文里不再重复一遍书名，也不再显示目录 —— 目录属于"书库管理"的信息。 */
+  function paintWallChrome() {
+    // 顶栏永远只写书库名（全部书籍时写"全部书籍"），进入某个系列也不改 ——
+    // 系列名只在下面那一条返回栏里出现，顶栏保持稳定，不会点一次系列就换一次样子。
+    setTopbar(currentLibraryName(), '');
+    setTopbarMode('wall');
+    setTopbarTools(true);
+
+    var tools = $('#header-tools');
+    if (tools && !$('#density-seg', tools)) {
+      // 尺寸按钮插在排序前面：先定"看哪一排"，再定"排成多大"。
+      tools.insertAdjacentHTML('afterbegin', densitySegHTML());
+    }
+    renderSeriesBar();
+  }
+  /* 系列聚合打开时，同一个系列在墙上只占一张卡：
+     用系列里排在最前面那本书的封面，书名位置换成系列名，角上挂"共 N 本"。
+     点这张卡不直接打开书，而是只看这个系列（等价于 ?series=），
+     里面每一本照常在墙上铺开 —— 想看哪本再点哪本。
+     关着聚合的书库完全不经过这一层，还是原来的一整面墙。 */
+  function seriesCardHTML(g) {
+    var first = g.books[0];
+    return '<a href="#/series/' + encodeURIComponent(g.name) + '" class="card card-series-group rise"' +
+        ' data-series="' + esc(g.name) + '" title="' + esc(g.name) + ' · 共 ' + g.count + ' 本">' +
+        '<div class="card-cover">' +
+          coverHTML(first, g.name) +
+          '<span class="card-badge series">' + svg(ICONS.books) + ' ' + g.count + ' 本</span>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="card-title u-clamp2">' + esc(g.name) + '</div>' +
+          '<div class="card-author u-clamp1">系列 · 共 ' + g.count + ' 本</div>' +
+        '</div>' +
+      '</a>';
+  }
+
+  /* 把一页书排成若干"块"。块和卡的排法取决于当前视野：
+     · 单座书库：散书一块，每个系列一块（各放一张合并卡），块与块并排放；
+     · 全部书籍：系列可能跨好几座库，塞进某个书库的格子里会把那一格挤变形，
+       所以合并卡统一铺在最前面一整行，散书再一块块并排跟在后面。 */
+  function paintBookSections(container, books, append) {
+    var crossLibrary = state.libraryId <= 0;
+    var order = [];
+    var map = {};
+    books.forEach(function (b) {
+      var key = bookSectionKey(b);
+      if (!map[key]) { map[key] = []; order.push(key); }
+      map[key].push(b);
+    });
+    // 散书永远放在最前面（跨书库视图里系列在最前，见下）
+    order.sort(function (a, b) {
+      if (a === '') return -1;
+      if (b === '') return 1;
+      return 0;
+    });
+
+    if (!append) container.innerHTML = '';
+    var seriesList = [];
+    order.forEach(function (key) {
+      var list = map[key];
+      if (key !== '') { seriesList.push(list); return; }
+      var loose = container.querySelector('.book-section[data-key=""]');
+      if (loose) {
+        loose.querySelector('.grid').insertAdjacentHTML('beforeend', list.map(cardHTML).join(''));
+        loose.querySelector('.series-count').textContent =
+          loose.querySelectorAll('.card').length + ' 本';
+        return;
+      }
+      container.insertAdjacentHTML('beforeend',
+        '<section class="book-section" data-key="">' +
+          '<div class="series-head"><span class="series-name">散书</span>' +
+            '<span class="series-count">' + list.length + ' 本</span></div>' +
+          '<div class="grid">' + list.map(cardHTML).join('') + '</div></section>');
+    });
+
+    if (!seriesList.length) return;
+
+    if (crossLibrary) {
+      // 全部书籍：所有系列的合并卡并成一整行，放在散书之前
+      var row = container.querySelector('.book-section[data-key="__series__"]');
+      if (!row) {
+        container.insertAdjacentHTML('afterbegin',
+          '<section class="book-section" data-key="__series__">' +
+            '<div class="series-head"><span class="series-name">系列</span>' +
+              '<span class="series-count"></span></div>' +
+            '<div class="grid" id="series-row"></div></section>');
+        row = container.querySelector('.book-section[data-key="__series__"]');
+      }
+      var grid = row.querySelector('#series-row');
+      seriesList.forEach(function (list) {
+        var uid = bookSectionKey(list[0]);
+        if (grid.querySelector('[data-uid="' + cssEscape(uid) + '"]')) return;
+        grid.insertAdjacentHTML('beforeend',
+          '<span data-uid="' + esc(uid) + '" class="series-slot">' + seriesCardHTML({
+            name: list[0].series_name,
+            count: list[0].series_count || list.length,
+            books: list
+          }) + '</span>');
+      });
+      row.querySelector('.series-count').textContent = grid.querySelectorAll('.card').length + ' 个系列';
+      return;
+    }
+
+    seriesList.forEach(function (list) {
+      var key = bookSectionKey(list[0]);
+      if (container.querySelector('.book-section[data-key="' + cssEscape(key) + '"]')) return;
+      container.insertAdjacentHTML('beforeend',
+        '<section class="book-section" data-key="' + esc(key) + '">' +
+          '<div class="grid">' + seriesCardHTML({
+            name: list[0].series_name,
+            // 合并卡上的"共 N 本"是整条系列的总数（跨页也算全）
+            count: list[0].series_count || list.length,
+            books: list
+          }) + '</div></section>');
+    });
+  }
+  function bookSectionKey(b) {
+    return b && b.series_uid ? 's:' + b.series_uid : '';
+  }
+
+  /* 在封面墙上找到系列合并卡，点它就走"只看这个系列"。
+     用事件委托，翻页 / 重新渲染之后不用重新绑定。 */
+  function bindSeriesOpen() {
+    var grid = $('#grid');
+    if (!grid || grid.getAttribute('data-series-bound') === '1') return;
+    grid.setAttribute('data-series-bound', '1');
+    grid.addEventListener('click', function (ev) {
+      var card = ev.target.closest ? ev.target.closest('.card-series-group') : null;
+      if (!card) return;
+      ev.preventDefault();
+      openSeries(card.getAttribute('data-series'));
+    });
+  }
+
+  /* 只看一个系列：复用列表接口的 ?series= 过滤。
+     筛选条上的胶囊会跟着高亮，顶部有"返回全部"的退路。 */
+  function openSeries(name) {
+    if (!name) return;
+    seriesFilter = name;
+    state.q = '';
+    var search = $('#search');
+    if (search) search.value = '';
+    if (parseHash().name !== 'wall') {
+      // 从首页 / 详情页点进来的：先回到列表
+      location.hash = state.libraryId > 0 ? '#/lib/' + state.libraryId : '#/all';
+      return;
+    }
+    // 改 hash 会触发一次 route（会再 loadBooks 一次，且重置列表态）；
+    // 地址栏也跟着变成 #/series/<名称>，刷新或分享出去都停在这个系列里。
+    location.hash = '#/series/' + encodeURIComponent(name);
+    loadBooks(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  /* 系列视图顶部的那一条：只有正在看某个系列时才出现，
+     一句"‹ 返回全部" + 这个系列有几本。书库总览页不显示这一条。 */
+  function renderSeriesBar() {
+    var bar = $('#series-bar');
+    if (!bar) return;
+    if (!seriesFilter) {
+      bar.innerHTML = '';
+      bar.classList.add('u-hidden');
+      return;
+    }
+    var label = seriesFilter === 'none' ? '散书' : seriesFilter;
+    var count = 0;
+    (state.seriesGroups || []).forEach(function (g) {
+      if (g.name === seriesFilter) count = g.count;
+    });
+    bar.classList.remove('u-hidden');
+    bar.innerHTML =
+      '<a class="series-chip back" href="' + (state.libraryId > 0 ? '#/lib/' + state.libraryId : '#/all') + '">' +
+        svg(ICONS.back) + '返回全部</a>' +
+      '<span class="series-bar-label">' + esc(label) + '</span>' +
+      (count ? '<span class="series-bar-count">' + count + ' 本</span>' : '');
+  }
+  /* CSS.escape 不可用时退回简单的属性值转义（系列名大多是中文与空格）。 */
+  function cssEscape(s) {
+    if (window.CSS && CSS.escape) return CSS.escape(s);
+    return String(s).replace(/["\\]/g, '\\$&');
   }
 
   /* 一张卡片 = 封面 + 书名 + 作者。
      系列里的书（如"三体 2"）右上角挂一个卷标签，扫一眼就知道是第几卷。 */
   function cardHTML(b) {
     var seriesBadge = '';
-    if (b.series) {
-      seriesBadge = '<span class="card-series" title="' + esc(b.series) + '">' +
-        (b.volume ? '第 ' + esc(b.volume) + ' 卷' : esc(b.series)) + '</span>';
+    var tag = b.series_name || b.series;
+    if (tag) {
+      seriesBadge = '<span class="card-series" title="' + esc(tag) + '">' +
+        (b.volume ? '第 ' + esc(b.volume) + ' 卷' : esc(tag)) + '</span>';
     }
     return '<a href="#/book/' + b.id + '" class="card rise" data-id="' + b.id + '" title="' + esc(b.title) + '">' +
         '<div class="card-cover">' +
@@ -1701,6 +1892,7 @@
     if (state.libraryId > 0) params.set('library_id', String(state.libraryId));
     if (state.q) params.set('q', state.q);
     if (state.format) params.set('format', state.format);
+    if (seriesFilter) params.set('series', seriesFilter);
     var sortParts = state.sort.split(':');
     params.set('sort', sortParts[0]);
     params.set('order', sortParts[1] || 'asc');
@@ -1712,21 +1904,28 @@
       state.pages = data.pages;
       state.lastElapsed = data.elapsed_ms || 0;
       state.books = state.books.concat(data.books || []);
+      state.seriesOn = !!data.series;
+      state.seriesGroups = data.groups || [];
 
-      var cards = (data.books || []).map(cardHTML).join('');
-      if (reset) {
-        // 整块只改一次，只触发一次重绘 —— 不做"先清空再逐条插入"。
-        if (grid) grid.innerHTML = cards;
-        state.wallSig = wallQuerySig();
-      } else if (grid) {
-        grid.insertAdjacentHTML('beforeend', cards);
+      if (grid) {
+        if (state.seriesOn && !seriesFilter) {
+          // 书库总览：同一个系列合并成一张卡，散书在最前面照常铺开
+          paintBookSections(grid, data.books || [], !reset);
+        } else {
+          // 普通平铺，或者正在看某个系列 —— 这时候要看的就是里面每一本书
+          var cards = (data.books || []).map(cardHTML).join('');
+          if (reset) {
+            // 整块只改一次，只触发一次重绘 —— 不做"先清空再逐条插入"。
+            grid.innerHTML = cards;
+          } else {
+            grid.insertAdjacentHTML('beforeend', cards);
+          }
+        }
       }
+      if (reset) state.wallSig = wallQuerySig();
 
-      var sub = $('#wall-sub');
-      if (sub) {
-        sub.textContent = data.total + ' 本' + (state.q || state.format ? '（已筛选）' : '') +
-          (state.libraryId > 0 ? '，' + wallSubtitle() : '');
-      }
+      // 顶栏标题在整段浏览里保持不变；当前系列交给返回栏去说
+      renderSeriesBar();
 
 
       renderEmptyState();
@@ -1765,9 +1964,9 @@
       if (btn) btn.addEventListener('click', function () { loadBooks(false); });
       return;
     }
-    if (n === 0) { setFeedFoot(''); return; }
-    var ms = state.lastElapsed ? (' · 用时 ' + state.lastElapsed + ' ms') : '';
-    setFeedFoot('<span>共 ' + data.total + ' 本' + ms + '</span>');
+    // 全部加载完了就什么都不显示：页底一行"共 N 本 · 用时 0.5 ms"属于调试信息，
+    // 数量在顶栏 / 侧栏都能看到，页脚留白更干净。
+    setFeedFoot('');
   }
 
   function renderEmptyState() {
@@ -1801,8 +2000,9 @@
     var view = $('#view');
     state.detailId = id;
     stopHeroRotation();
-    // 详情页顶栏只要书名与作者：排序、深浅色切换、标记墙都不再显示
+    // 详情页顶栏只留一个「返回」：书名在下面的大标题里，搜索框这类列表工具也不需要。
     setTopbarTools(false);
+    setTopbarMode('detail');
     view.setAttribute('data-view', 'detail');
 
     // 详情接口在局域网里通常几毫秒就回来。原先是一进去就先把内容换成
@@ -1811,6 +2011,7 @@
     var slowTimer = setTimeout(function () {
       if (view.getAttribute('data-view') !== 'detail' || state.detailId !== id) return;
       setTopbar('书籍详情', '');
+      setTopbarMode('detail');
       view.innerHTML = '<div class="page-head"><div class="grow">' +
         '<div class="sk-line" style="width:180px"></div></div></div>' +
         '<div class="detail-hero"><div class="detail-grid">' +
@@ -1889,6 +2090,7 @@
 
       view.innerHTML = html;
       setTopbar(b.title, b.author || '');
+      setTopbarMode('detail');
       closeBootGate();
 
       renderDetailMore(b);
@@ -1906,6 +2108,7 @@
         '<h2>打不开这本书</h2><p>' + esc(err.message) + '</p>' +
         '<a href="#/" class="btn">返回书库</a></div>';
       setTopbar('书籍详情', '');
+      setTopbarMode('detail');
       view.innerHTML = errHTML;
     });
   }
@@ -1940,11 +2143,11 @@
       '</form>'
     );
 
-    var form = page.$('#book-meta-form');
-    var title = page.$('#bm-title');
-    var author = page.$('#bm-author');
-    var errBox = page.$('#bm-error');
-    var save = page.$('#bm-save');
+    var form = $('#book-meta-form');
+    var title = $('#bm-title');
+    var author = $('#bm-author');
+    var errBox = $('#bm-error');
+    var save = $('#bm-save');
 
     form.addEventListener('submit', function (ev) {
       ev.preventDefault();
@@ -1995,7 +2198,7 @@
       '</div>'
     );
 
-    var btn = page.$('#book-del-confirm');
+    var btn = $('#book-del-confirm');
     btn.addEventListener('click', function () {
       btn.disabled = true;
       btn.textContent = '删除中…';
@@ -2260,6 +2463,9 @@
           '<div class="lib-path">' + esc(lib.path) + '</div>' +
           '<div class="lib-meta">' +
             '<span>书籍 <b>' + (lib.book_count || 0) + '</b></span>' +
+            (lib.series_group
+              ? '<span class="tag ok" title="按目录最深一层的文件夹名把同系列的书聚合展示">' + svg(ICONS.books) + '系列聚合</span>'
+              : '') +
             '<span>EPUB <b>' + (lib.epub_count || 0) + '</b></span>' +
             '<span>PDF <b>' + (lib.pdf_count || 0) + '</b></span>' +
             '<span>上次扫描 ' + fmtTime(lib.last_scan_at) + '</span>' +
@@ -2299,7 +2505,7 @@
       '</div>'
     );
 
-    var btn = page.$('#confirm-del');
+    var btn = $('#confirm-del');
     btn.addEventListener('click', function () {
       btn.disabled = true;
       btn.textContent = '删除中…';
@@ -2377,6 +2583,26 @@
               '<span id="icon-upload-name" style="font-size:11.5px;color:var(--text-3)" class="u-clamp1"></span>' +
             '</div>' +
           '</div>' +
+
+          /* 系列作品聚合：默认关闭，保持老用户看到的样子；
+             开了以后按目录最深一层的文件夹名把同系列的书并成一块。 */
+          '<div class="field">' +
+            '<div class="switch-row">' +
+              '<label class="switch-row-main" for="lib-series">' +
+                '<span class="switch-row-title">启用系列作品聚合</span>' +
+                '<span class="switch-row-desc">按预设规则自动把同系列的书聚合展示：' +
+                  '只有目录里最深一层的书，按它所在的文件夹名归成系列；更浅层的书作为散书展示。' +
+                  '关闭时保持原来的平铺列表。</span>' +
+              '</label>' +
+              '<label class="switch" title="启用系列作品聚合">' +
+                '<input id="lib-series" type="checkbox"' +
+                  (isEdit && lib.series_group ? ' checked' : '') + ' aria-label="启用系列作品聚合">' +
+                '<span class="switch-track"></span>' +
+              '</label>' +
+            '</div>' +
+            '<div class="hint">深度规则：书库根目录下的书深度为 1，每进一层文件夹加 1。' +
+              '只有深度等于「最深一层」的书参与聚合，系列名取它的直接文件夹名。</div>' +
+          '</div>' +
         '</div>' +
 
         '<div id="lib-error" class="alert error u-hidden" style="margin:0 24px 18px"></div>' +
@@ -2390,14 +2616,14 @@
     );
 
     function paintCoverPreview() {
-      var box = page.$('#lib-cover-preview');
+      var box = $('#lib-cover-preview');
       if (!box) return;
       box.innerHTML = coverURL
         ? '<img src="' + esc(coverURL) + '" alt="">'
         : '<span class="lib-cover-auto">' + iconHTML(icon) + '<span>自动拼图</span></span>';
-      var up = page.$('#lib-cover-upload');
+      var up = $('#lib-cover-upload');
       if (up) up.innerHTML = svg(ICONS.image) + (coverURL ? '更换封面' : '上传封面');
-      var reset = page.$('#lib-cover-reset');
+      var reset = $('#lib-cover-reset');
       if (reset) {
         reset.disabled = !coverURL;
         reset.textContent = '恢复自动拼图';
@@ -2406,7 +2632,7 @@
     paintCoverPreview();
 
     function refreshIconTiles(uploaded, builtin) {
-      var grid = page.$('#icon-grid');
+      var grid = $('#icon-grid');
       var tiles = (builtin || []).map(function (name) {
         var id = 'builtin:' + name;
         return '<button type="button" data-icon="' + id + '" title="' + esc(name) + '"' +
@@ -2437,14 +2663,14 @@
       refreshIconTiles([], Object.keys(ICONS));
     });
 
-    page.$('#icon-upload').addEventListener('click', function () { page.$('#icon-file').click(); });
-    page.$('#icon-file').addEventListener('change', function () {
+    $('#icon-upload').addEventListener('click', function () { $('#icon-file').click(); });
+    $('#icon-file').addEventListener('change', function () {
       if (!this.files || !this.files[0]) return;
       var fd = new FormData();
       fd.append('file', this.files[0]);
       apiUpload('/api/icons', fd).then(function (d) {
         icon = d.id;
-        page.$('#icon-upload-name').textContent = '已上传：' + d.name;
+        $('#icon-upload-name').textContent = '已上传：' + d.name;
         state.iconCache = api('/api/icons');
         return state.iconCache;
       }).then(function (d2) {
@@ -2455,10 +2681,10 @@
     });
 
     // 书库封面：上传后立即生效，表单的其它字段照常保存
-    var coverUpload = page.$('#lib-cover-upload');
+    var coverUpload = $('#lib-cover-upload');
     if (coverUpload) {
-      var coverFile = page.$('#lib-cover-file');
-      var coverReset = page.$('#lib-cover-reset');
+      var coverFile = $('#lib-cover-file');
+      var coverReset = $('#lib-cover-reset');
 
       coverUpload.addEventListener('click', function () { coverFile.click(); });
       coverFile.addEventListener('change', function () {
@@ -2498,17 +2724,17 @@
       });
     }
 
-    page.$('#lib-browse').addEventListener('click', function () {
-      openDirPicker(page.$('#lib-path').value.trim(), function (picked) {
-        page.$('#lib-path').value = picked;
+    $('#lib-browse').addEventListener('click', function () {
+      openDirPicker($('#lib-path').value.trim(), function (picked) {
+        $('#lib-path').value = picked;
       });
     });
 
-    page.$('#lib-form').addEventListener('submit', function (ev) {
+    $('#lib-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var name = page.$('#lib-name').value.trim();
-      var path = page.$('#lib-path').value.trim();
-      var err = page.$('#lib-error');
+      var name = $('#lib-name').value.trim();
+      var path = $('#lib-path').value.trim();
+      var err = $('#lib-error');
 
       function fail(msg) {
         err.innerHTML = svg(ICONS.alert) + '<span>' + esc(msg) + '</span>';
@@ -2519,11 +2745,16 @@
       if (!path) { fail('请选择目录路径'); return; }
       err.classList.add('u-hidden');
 
-      var btn = page.$('#lib-submit');
+      var btn = $('#lib-submit');
       btn.disabled = true;
       btn.textContent = isEdit ? '保存中…' : '创建中…';
 
-      var payload = { name: name, path: path, icon: icon };
+      var payload = {
+        name: name,
+        path: path,
+        icon: icon,
+        series_group: !!$('#lib-series').checked
+      };
       var req = isEdit
         ? api('/api/libraries/' + lib.id, { method: 'PUT', body: payload })
         : api('/api/libraries', { method: 'POST', body: payload });
@@ -2711,28 +2942,28 @@
       '</form>'
     );
 
-    page.$('#user-form').addEventListener('submit', function (ev) {
+    $('#user-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var err = page.$('#u-error');
+      var err = $('#u-error');
 
       function fail(msg) {
         err.innerHTML = svg(ICONS.alert) + '<span>' + esc(msg) + '</span>';
         err.classList.remove('u-hidden');
       }
 
-      var username = page.$('#u-name').value.trim();
-      var password = page.$('#u-pass').value;
+      var username = $('#u-name').value.trim();
+      var password = $('#u-pass').value;
       if (!username) { fail('请填写用户名'); return; }
       if (!password) { fail('请填写密码'); return; }
       err.classList.add('u-hidden');
 
-      var btn = page.$('button[type="submit"]');
+      var btn = $('button[type="submit"]');
       btn.disabled = true;
       btn.textContent = '创建中…';
 
       api('/api/users', {
         method: 'POST',
-        body: { username: username, password: password, role: page.$('#u-role').value }
+        body: { username: username, password: password, role: $('#u-role').value }
       }).then(function () {
         modal.close();
         toast('账号已创建', 'ok');
@@ -2774,20 +3005,20 @@
       '</form>'
     );
 
-    page.$('#rp-form').addEventListener('submit', function (ev) {
+    $('#rp-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var err = page.$('#rp-error');
+      var err = $('#rp-error');
 
       function fail(msg) {
         err.innerHTML = svg(ICONS.alert) + '<span>' + esc(msg) + '</span>';
         err.classList.remove('u-hidden');
       }
 
-      var p1 = page.$('#rp-pass').value;
-      if (p1 !== page.$('#rp-pass2').value) { fail('两次输入的密码不一致'); return; }
+      var p1 = $('#rp-pass').value;
+      if (p1 !== $('#rp-pass2').value) { fail('两次输入的密码不一致'); return; }
       err.classList.add('u-hidden');
 
-      var btn = page.$('button[type="submit"]');
+      var btn = $('button[type="submit"]');
       btn.disabled = true;
       btn.textContent = '提交中…';
 
@@ -2824,7 +3055,7 @@
       '</div>'
     );
 
-    var btn = page.$('#confirm-udel');
+    var btn = $('#confirm-udel');
     btn.addEventListener('click', function () {
       btn.disabled = true;
       btn.textContent = '删除中…';
@@ -2871,11 +3102,11 @@
 
     function render(data) {
       current = data.path;
-      page.$('#picker-path').value = data.path;
-      page.$('#picker-current').textContent = data.path;
-      page.$('#picker-error').classList.add('u-hidden');
+      $('#picker-path').value = data.path;
+      $('#picker-current').textContent = data.path;
+      $('#picker-error').classList.add('u-hidden');
 
-      var roots = page.$('#picker-roots');
+      var roots = $('#picker-roots');
       roots.innerHTML = (data.roots || []).map(function (r) {
         return '<button type="button" data-root="' + esc(r) + '" class="root-chip">' + esc(r) + '</button>';
       }).join('');
@@ -2883,7 +3114,7 @@
         b.addEventListener('click', function () { load(this.getAttribute('data-root')); });
       });
 
-      var list = page.$('#picker-list');
+      var list = $('#picker-list');
       var rows = '';
       if (data.parent) {
         rows += '<button type="button" data-dir="' + esc(data.parent) + '" class="picker-row">' +
@@ -2913,19 +3144,19 @@
     function load(path) {
       var url = '/api/browse' + (path ? '?path=' + encodeURIComponent(path) : '');
       api(url).then(render).catch(function (e) {
-        var box = page.$('#picker-error');
+        var box = $('#picker-error');
         box.innerHTML = svg(ICONS.alert) + '<span>' + esc(e.message) + '</span>';
         box.classList.remove('u-hidden');
       });
     }
 
-    page.$('#picker-go').addEventListener('click', function () {
-      load(page.$('#picker-path').value.trim());
+    $('#picker-go').addEventListener('click', function () {
+      load($('#picker-path').value.trim());
     });
-    page.$('#picker-path').addEventListener('keydown', function (ev) {
+    $('#picker-path').addEventListener('keydown', function (ev) {
       if (ev.key === 'Enter') { ev.preventDefault(); load(this.value.trim()); }
     });
-    page.$('#picker-pick').addEventListener('click', function () {
+    $('#picker-pick').addEventListener('click', function () {
       if (!current) { toast('请先选择一个目录', 'err'); return; }
       onPick(current);
       modal.close();
@@ -2960,18 +3191,18 @@
       '</form>'
     );
 
-    page.$('#pwd-form').addEventListener('submit', function (ev) {
+    $('#pwd-form').addEventListener('submit', function (ev) {
       ev.preventDefault();
-      var err = page.$('#pwd-error');
+      var err = $('#pwd-error');
 
       function fail(msg) {
         err.innerHTML = svg(ICONS.alert) + '<span>' + esc(msg) + '</span>';
         err.classList.remove('u-hidden');
       }
 
-      var oldPwd = page.$('#pwd-old').value;
-      var newPwd = page.$('#pwd-new').value;
-      if (newPwd !== page.$('#pwd-new2').value) { fail('两次输入的新密码不一致'); return; }
+      var oldPwd = $('#pwd-old').value;
+      var newPwd = $('#pwd-new').value;
+      if (newPwd !== $('#pwd-new2').value) { fail('两次输入的新密码不一致'); return; }
       err.classList.add('u-hidden');
 
       api('/api/auth/password', { method: 'POST', body: { old_password: oldPwd, new_password: newPwd } })
@@ -3070,6 +3301,10 @@
     if (parts[0] === 'lib') return { name: 'wall', libraryId: Number(parts[1]) || 0 };
     if (parts[0] === 'book') return { name: 'detail', id: Number(parts[1]) || 0 };
     if (parts[0] === 'all') return { name: 'wall', libraryId: -1 };
+    if (parts[0] === 'series') {
+      // #/series/<名称>：只看这个系列。保留当前书库（没有就是全部书籍）。
+      return { name: 'wall', libraryId: state.libraryId > 0 ? state.libraryId : -1, series: decodeURIComponent(parts[1] || '') };
+    }
     return { name: 'home' };
   }
 
@@ -3128,10 +3363,22 @@
 
     // wall：全部书籍（-1）或某个书库
     state.libraryId = r.libraryId || 0;
+    // 从 #/series/<名称> 回到 #/lib/<id>（点"返回全部"）：清掉系列筛选
+    // 点「返回全部」只是把 hash 改回 #/lib/<id>，这里必须把筛选清掉，
+    // 否则会一直卡在上一个系列里。
+    if (r.series !== undefined) {
+      seriesFilter = r.series;
+    } else {
+      seriesFilter = '';
+    }
+    lastWallLibrary = state.libraryId;
     renderSidebar();
     renderWallShell();
     loadBooks(true);
   }
+
+  // 上一次进入封面墙时的书库，用来判断"是不是换了书库"
+  var lastWallLibrary = null;
 
   /* ------------------------------------------------------------------ 初始化 */
 
@@ -3206,7 +3453,6 @@
       else location.hash = '#/all';
     });
 
-    // 用户菜单
     var userBtn = $('#user-btn');
     var userMenu = $('#user-menu');
     function closeMenu() {

@@ -1283,6 +1283,77 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .back-link:hover { color: var(--text); background: var(--surface-hover); }
 .back-link svg { width: 15px; height: 15px; }
 
+/* 详情页的顶栏只留一个"返回"：书名、作者、搜索框、排序全都不再需要
+   （书名就在下面的大标题里，搜索是列表页的事）。
+   正文里那个重复的"‹ 返回"因此也一并收起来。 */
+.topbar.is-detail .search,
+.topbar.is-detail .crumb,
+.topbar.is-detail .header-tools { display: none; }
+.topbar.is-detail .topbar-back { display: inline-flex; }
+.topbar-back {
+  display: none;
+  align-items: center; gap: 7px;
+  height: 34px; padding: 0 15px 0 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 13px; font-weight: 600;
+  transition: color .15s var(--ease), background .15s var(--ease), border-color .15s var(--ease);
+}
+.topbar-back:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border-2); }
+.topbar-back svg { width: 16px; height: 16px; }
+body.view-detail .view > .back-link { display: none; }
+
+/* 书库页：书库名直接写在顶栏里（不显示目录路径），封面尺寸按钮挨着排序列。
+   正文里不再重复标题，所以顶栏标题可以稍微放大一点，作为唯一的"我在哪"。 */
+.topbar.is-wall .crumb h1 { font-size: 18px; }
+.topbar.is-wall .header-tools { gap: 10px; }
+/* 尺寸按钮在排序左边，单独一小组分隔：读起来是「标题 … 尺寸 | 排序 主题」 */
+.topbar.is-wall .header-tools .segmented { margin-right: 2px; }
+.topbar.is-wall .header-tools .select { max-width: 190px; }
+
+/* 系列页顶部那一条：返回全部 + 当前系列名与本数 */
+.series-bar {
+  display: flex; align-items: center; gap: 10px;
+  margin: 2px 0 16px;
+}
+.series-chip.back { text-decoration: none; }
+.series-chip.back svg { width: 14px; height: 14px; }
+.series-bar-label { font-size: 13px; font-weight: 650; color: var(--text); }
+.series-bar-count { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
+
+/* 封面墙标题：正在看某个系列时变成「系列名 + 所属书库」，点一下退回全部。 */
+.title-back {
+  display: inline-flex; align-items: baseline; gap: 10px;
+  color: inherit; text-decoration: none;
+  max-width: 100%;
+}
+.title-back:hover { color: var(--text); }
+.title-back-sub {
+  font-size: 12.5px; font-weight: 500; color: var(--text-3);
+  padding-left: 10px; border-left: 1px solid var(--border-2);
+}
+/* 系列合并卡：封面沿用系列里排第一的那本，角标写"共 N 本" */
+.card-badge.series {
+  display: inline-flex; align-items: center; gap: 4px;
+  background: rgba(10, 12, 16, .72);
+  color: #f0f4fa;
+  backdrop-filter: blur(6px);
+}
+.card-badge.series svg { width: 11px; height: 11px; }
+[data-theme="light"] .card-badge.series { background: rgba(255, 255, 255, .88); color: #1c1f26; }
+.card-series-group .card-cover::after {
+  /* 合并卡叠一层很淡的暗角，和单本书卡区分开，但不抢封面 */
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--accent-line);
+  border-radius: inherit;
+  opacity: .55;
+  transition: opacity .18s var(--ease);
+}
+.card-series-group:hover .card-cover::after { opacity: 1; }
+.card-series-group .card-title { font-weight: 650; }
+
 .detail-hero {
   position: relative;
   border-radius: var(--r-lg);
@@ -1810,6 +1881,82 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   font-size: 12.5px; font-weight: 600; color: var(--text-2); margin-bottom: 7px;
 }
 .field .hint { font-size: 11.5px; color: var(--text-3); margin-top: 6px; line-height: 1.6; }
+
+/* 开关型字段：左边一段标题 + 说明，右边一个拨动开关。
+   用在"启用系列作品聚合"这类只有开关、没有输入框的设置上。 */
+.switch-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+}
+.switch-row-main { display: flex; flex-direction: column; gap: 5px; cursor: pointer; min-width: 0; }
+.switch-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.switch-row-desc { font-size: 12px; color: var(--text-3); line-height: 1.65; }
+.switch-row .switch { margin-top: 1px; }
+
+/* ------------------------------------------------------------------ 系列聚合
+   书库打开「系列作品聚合」后，封面墙按块展示：散书一块，每个系列一块。
+   关闭时这一层完全不存在，和以前的平铺网格一模一样。 */
+
+.series-bar {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: -6px 0 18px;
+}
+.series-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 30px; padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px; font-weight: 550;
+  cursor: pointer;
+  max-width: 240px;
+  transition: border-color .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+}
+.series-chip:hover { border-color: var(--border-2); color: var(--text); }
+.series-chip.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.series-chip-n {
+  font-family: var(--font-mono); font-size: 10.5px;
+  padding: 0 5px; border-radius: 99px;
+  background: var(--surface-3); color: var(--text-3);
+}
+.series-chip.on .series-chip-n { background: transparent; color: inherit; opacity: .75; }
+
+.book-section { margin-bottom: 26px; }
+.book-section:last-child { margin-bottom: 0; }
+/* 分块模式下每一块内部仍然是一行一行铺开的网格；块之间只留一点间距。
+   （#grid 本身就是网格，块是它的格子 —— 不要改成 block，否则块会纵向堆成一列。） */
+.book-section > .grid { gap: var(--grid-gap-y) var(--grid-gap-x); }
+/* 「全部书籍」里合并卡铺成一整行：它可能横跨好几座书库，单独占满一行才不会被挤变形 */
+.book-section[data-key="__series__"] { grid-column: 1 / -1; }
+/* 散书在某个系列之后出现时，也要整行铺开；否则它只会占第一格，里面的封面被挤成一列 */
+#grid > .book-section { grid-column: 1 / -1; }
+.series-slot { display: block; min-width: 0; }
+.series-slot .card { width: 100%; }
+.series-head {
+  display: flex; align-items: center; gap: 8px;
+  margin: 0 0 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.series-icon {
+  width: 20px; height: 20px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+}
+.series-icon svg { width: 15px; height: 15px; }
+.series-name {
+  font-size: 14px; font-weight: 650; letter-spacing: -.01em; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.series-count { font-size: 11.5px; color: var(--text-3); }
 
 .input {
   width: 100%; height: 40px; padding: 0 13px;

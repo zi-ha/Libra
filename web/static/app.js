@@ -307,8 +307,6 @@
     featured: null,     // 首页横幅本轮内容（每会话取一次，扫描 / 数据源变更后失效）
     featuredIdx: 0,
     featuredForce: false, // 下一次取横幅时跳过服务端一小时缓存（管理员点了"换一批"）
-    seriesOn: false,      // 当前书库是否启用了系列作品聚合（由列表接口返回）
-    seriesGroups: [],     // 当前书库里的系列（名称 + 张数），做筛选用
     heroTimer: null,
     libCovers: {},      // 书库宫格拼贴：libraryId -> [封面 URL]
     lastElapsed: 0,
@@ -388,37 +386,6 @@
     nav.innerHTML = html;
   }
 
-  function renderSidebarStats() {
-    var node = $('#sidebar-stats');
-    if (!node) return;
-
-    var sig = state.libraries.map(function (l) {
-      return l.id + ':' + (l.book_count || 0) + ':' + (l.epub_count || 0) + ':' + (l.pdf_count || 0);
-    }).join(',');
-    if (node.getAttribute('data-sig') === sig) return;
-    node.setAttribute('data-sig', sig);
-
-    if (!state.libraries.length) {
-      node.innerHTML = '<div class="k">藏书</div><div class="v" style="font-size:14px;font-weight:600;color:var(--text-2)">还没有书库</div>';
-      return;
-    }
-
-    var epub = 0, pdf = 0;
-    state.libraries.forEach(function (l) {
-      epub += l.epub_count || 0;
-      pdf += l.pdf_count || 0;
-    });
-
-    node.innerHTML =
-      '<div class="k">藏书总数</div>' +
-      '<div class="v">' + (epub + pdf) + '<small>本</small></div>' +
-      '<div class="split">' +
-        '<span>EPUB <b>' + epub + '</b></span>' +
-        '<span>PDF <b>' + pdf + '</b></span>' +
-        '<span>书库 <b>' + state.libraries.length + '</b></span>' +
-      '</div>';
-  }
-
   function loadLibraries() {
     return api('/api/libraries').then(function (data) {
       state.libraries = data.libraries || [];
@@ -430,7 +397,6 @@
         startPolling();
       }
       renderSidebar();
-      renderSidebarStats();
       return state.libraries;
     });
   }
@@ -1576,10 +1542,6 @@
 
   /* ------------------------------------------------------------------ 封面墙 */
 
-  // 当前的系列筛选（"" 全部 / "none" 散书 / 系列名）。放在模块级而不是状态里：
-  // 它只属于眼前的这一次浏览，换库或换路由都该重置。
-  var seriesFilter = '';
-
   function currentLibraryName() {
     if (state.libraryId === -1) return '全部书籍';
     if (state.libraryId === 0) return '首页';
@@ -1587,7 +1549,7 @@
     return lib ? lib.name : '全部书籍';
   }
 
-  /* 注意：书库页不再显示目录路径。目录属于「书库管理」里的信息，
+  /* 注意：书库页不显示目录路径。目录属于「书库管理」里的信息，
      浏览书的时候只关心"这是哪座库"，顶栏写书名就够。 */
 
   function densitySegHTML() {
@@ -1611,14 +1573,14 @@
   }
 
   function wallQuerySig() {
-    return state.libraryId + '|' + state.q + '|' + state.format + '|' + state.sort + '|' + seriesFilter;
+    return state.libraryId + '|' + state.q + '|' + state.format + '|' + state.sort;
   }
 
   function renderWallShell() {
     var view = $('#view');
 
-    // 已经在封面墙里：只刷新顶栏与筛选条，不重建 DOM。
-    // 搜索 / 筛筛选 / 换库都会走到这里，重建整块就会"闪一下"。
+    // 已经在封面墙里：只刷新顶栏，不重建 DOM。
+    // 搜索 / 筛选 / 换库都会走到这里，重建整块就会"闪一下"。
     if (view.getAttribute('data-view') === 'wall' && $('#grid')) {
       paintWallChrome();
       paintDensitySeg();
@@ -1634,24 +1596,18 @@
     view.setAttribute('data-view', 'wall');
     // 书库名与封面尺寸按钮都在顶栏里，正文从第一行开始就是书
     view.innerHTML =
-      '<div class="series-bar u-hidden" id="series-bar" aria-label="当前系列"></div>' +
       '<div id="grid" class="grid">' + prefill + '</div>' +
       '<div id="empty" class="empty u-hidden"></div>' +
       '<div id="feed-foot" class="feed-foot u-hidden"></div>';
 
-    seriesFilter = '';
     paintWallChrome();
     bindDensitySeg();
-    bindSeriesOpen();
   }
 
   /* 封面墙的"顶栏部分"：书库名写进顶栏标题（不显示目录路径），
-     搜索与排序在右边，封面尺寸按钮紧挨着；正在看某个系列时，
-     顶栏标题变成「系列名 · 书库名」。
+     搜索与排序在右边，封面尺寸按钮紧挨着。
      正文里不再重复一遍书名，也不再显示目录 —— 目录属于"书库管理"的信息。 */
   function paintWallChrome() {
-    // 顶栏永远只写书库名（全部书籍时写"全部书籍"），进入某个系列也不改 ——
-    // 系列名只在下面那一条返回栏里出现，顶栏保持稳定，不会点一次系列就换一次样子。
     setTopbar(currentLibraryName(), '');
     setTopbarMode('wall');
     setTopbarTools(true);
@@ -1661,187 +1617,14 @@
       // 尺寸按钮插在排序前面：先定"看哪一排"，再定"排成多大"。
       tools.insertAdjacentHTML('afterbegin', densitySegHTML());
     }
-    renderSeriesBar();
   }
-  /* 系列聚合打开时，同一个系列在墙上只占一张卡：
-     用系列里排在最前面那本书的封面，书名位置换成系列名，角上挂"共 N 本"。
-     点这张卡不直接打开书，而是只看这个系列（等价于 ?series=），
-     里面每一本照常在墙上铺开 —— 想看哪本再点哪本。
-     关着聚合的书库完全不经过这一层，还是原来的一整面墙。 */
-  function seriesCardHTML(g) {
-    var first = g.books[0];
-    return '<a href="#/series/' + encodeURIComponent(g.name) + '" class="card card-series-group rise"' +
-        ' data-series="' + esc(g.name) + '" title="' + esc(g.name) + ' · 共 ' + g.count + ' 本">' +
-        '<div class="card-cover">' +
-          coverHTML(first, g.name) +
-          '<span class="card-badge series">' + svg(ICONS.books) + ' ' + g.count + ' 本</span>' +
-        '</div>' +
-        '<div class="card-body">' +
-          '<div class="card-title u-clamp2">' + esc(g.name) + '</div>' +
-          '<div class="card-author u-clamp1">系列 · 共 ' + g.count + ' 本</div>' +
-        '</div>' +
-      '</a>';
-  }
-
-  /* 把一页书排成若干"块"。块和卡的排法取决于当前视野：
-     · 单座书库：散书一块，每个系列一块（各放一张合并卡），块与块并排放；
-     · 全部书籍：系列可能跨好几座库，塞进某个书库的格子里会把那一格挤变形，
-       所以合并卡统一铺在最前面一整行，散书再一块块并排跟在后面。 */
-  function paintBookSections(container, books, append) {
-    var crossLibrary = state.libraryId <= 0;
-    var order = [];
-    var map = {};
-    books.forEach(function (b) {
-      var key = bookSectionKey(b);
-      if (!map[key]) { map[key] = []; order.push(key); }
-      map[key].push(b);
-    });
-    // 散书永远放在最前面（跨书库视图里系列在最前，见下）
-    order.sort(function (a, b) {
-      if (a === '') return -1;
-      if (b === '') return 1;
-      return 0;
-    });
-
-    if (!append) container.innerHTML = '';
-    var seriesList = [];
-    order.forEach(function (key) {
-      var list = map[key];
-      if (key !== '') { seriesList.push(list); return; }
-      var loose = container.querySelector('.book-section[data-key=""]');
-      if (loose) {
-        loose.querySelector('.grid').insertAdjacentHTML('beforeend', list.map(cardHTML).join(''));
-        loose.querySelector('.series-count').textContent =
-          loose.querySelectorAll('.card').length + ' 本';
-        return;
-      }
-      container.insertAdjacentHTML('beforeend',
-        '<section class="book-section" data-key="">' +
-          '<div class="series-head"><span class="series-name">散书</span>' +
-            '<span class="series-count">' + list.length + ' 本</span></div>' +
-          '<div class="grid">' + list.map(cardHTML).join('') + '</div></section>');
-    });
-
-    if (!seriesList.length) return;
-
-    if (crossLibrary) {
-      // 全部书籍：所有系列的合并卡并成一整行，放在散书之前
-      var row = container.querySelector('.book-section[data-key="__series__"]');
-      if (!row) {
-        container.insertAdjacentHTML('afterbegin',
-          '<section class="book-section" data-key="__series__">' +
-            '<div class="series-head"><span class="series-name">系列</span>' +
-              '<span class="series-count"></span></div>' +
-            '<div class="grid" id="series-row"></div></section>');
-        row = container.querySelector('.book-section[data-key="__series__"]');
-      }
-      var grid = row.querySelector('#series-row');
-      seriesList.forEach(function (list) {
-        var uid = bookSectionKey(list[0]);
-        if (grid.querySelector('[data-uid="' + cssEscape(uid) + '"]')) return;
-        grid.insertAdjacentHTML('beforeend',
-          '<span data-uid="' + esc(uid) + '" class="series-slot">' + seriesCardHTML({
-            name: list[0].series_name,
-            count: list[0].series_count || list.length,
-            books: list
-          }) + '</span>');
-      });
-      row.querySelector('.series-count').textContent = grid.querySelectorAll('.card').length + ' 个系列';
-      return;
-    }
-
-    seriesList.forEach(function (list) {
-      var key = bookSectionKey(list[0]);
-      if (container.querySelector('.book-section[data-key="' + cssEscape(key) + '"]')) return;
-      container.insertAdjacentHTML('beforeend',
-        '<section class="book-section" data-key="' + esc(key) + '">' +
-          '<div class="grid">' + seriesCardHTML({
-            name: list[0].series_name,
-            // 合并卡上的"共 N 本"是整条系列的总数（跨页也算全）
-            count: list[0].series_count || list.length,
-            books: list
-          }) + '</div></section>');
-    });
-  }
-  function bookSectionKey(b) {
-    return b && b.series_uid ? 's:' + b.series_uid : '';
-  }
-
-  /* 在封面墙上找到系列合并卡，点它就走"只看这个系列"。
-     用事件委托，翻页 / 重新渲染之后不用重新绑定。 */
-  function bindSeriesOpen() {
-    var grid = $('#grid');
-    if (!grid || grid.getAttribute('data-series-bound') === '1') return;
-    grid.setAttribute('data-series-bound', '1');
-    grid.addEventListener('click', function (ev) {
-      var card = ev.target.closest ? ev.target.closest('.card-series-group') : null;
-      if (!card) return;
-      ev.preventDefault();
-      openSeries(card.getAttribute('data-series'));
-    });
-  }
-
-  /* 只看一个系列：复用列表接口的 ?series= 过滤。
-     筛选条上的胶囊会跟着高亮，顶部有"返回全部"的退路。 */
-  function openSeries(name) {
-    if (!name) return;
-    seriesFilter = name;
-    state.q = '';
-    var search = $('#search');
-    if (search) search.value = '';
-    if (parseHash().name !== 'wall') {
-      // 从首页 / 详情页点进来的：先回到列表
-      location.hash = state.libraryId > 0 ? '#/lib/' + state.libraryId : '#/all';
-      return;
-    }
-    // 改 hash 会触发一次 route（会再 loadBooks 一次，且重置列表态）；
-    // 地址栏也跟着变成 #/series/<名称>，刷新或分享出去都停在这个系列里。
-    location.hash = '#/series/' + encodeURIComponent(name);
-    loadBooks(true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }
-  /* 系列视图顶部的那一条：只有正在看某个系列时才出现，
-     一句"‹ 返回全部" + 这个系列有几本。书库总览页不显示这一条。 */
-  function renderSeriesBar() {
-    var bar = $('#series-bar');
-    if (!bar) return;
-    if (!seriesFilter) {
-      bar.innerHTML = '';
-      bar.classList.add('u-hidden');
-      return;
-    }
-    var label = seriesFilter === 'none' ? '散书' : seriesFilter;
-    var count = 0;
-    (state.seriesGroups || []).forEach(function (g) {
-      if (g.name === seriesFilter) count = g.count;
-    });
-    bar.classList.remove('u-hidden');
-    bar.innerHTML =
-      '<a class="series-chip back" href="' + (state.libraryId > 0 ? '#/lib/' + state.libraryId : '#/all') + '">' +
-        svg(ICONS.back) + '返回全部</a>' +
-      '<span class="series-bar-label">' + esc(label) + '</span>' +
-      (count ? '<span class="series-bar-count">' + count + ' 本</span>' : '');
-  }
-  /* CSS.escape 不可用时退回简单的属性值转义（系列名大多是中文与空格）。 */
-  function cssEscape(s) {
-    if (window.CSS && CSS.escape) return CSS.escape(s);
-    return String(s).replace(/["\\]/g, '\\$&');
-  }
-
   /* 一张卡片 = 封面 + 书名 + 作者。
-     系列里的书（如"三体 2"）右上角挂一个卷标签，扫一眼就知道是第几卷。 */
+     系列聚合功能已移除，卡片上不再挂任何系列卷标 —— 封面保持干净。 */
   function cardHTML(b) {
-    var seriesBadge = '';
-    var tag = b.series_name || b.series;
-    if (tag) {
-      seriesBadge = '<span class="card-series" title="' + esc(tag) + '">' +
-        (b.volume ? '第 ' + esc(b.volume) + ' 卷' : esc(tag)) + '</span>';
-    }
     return '<a href="#/book/' + b.id + '" class="card rise" data-id="' + b.id + '" title="' + esc(b.title) + '">' +
         '<div class="card-cover">' +
           coverHTML(b, b.title) +
           '<span class="card-badge ' + (b.format === 'pdf' ? 'pdf' : 'epub') + '">' + esc(b.format) + '</span>' +
-          seriesBadge +
           '<span class="card-tools">' +
             '<span class="card-action" role="button" tabindex="0" data-download="' + b.id + '"' +
               ' title="下载原文件" aria-label="下载原文件">' + svg(ICONS.download) + '</span>' +
@@ -1892,8 +1675,8 @@
     if (state.libraryId > 0) params.set('library_id', String(state.libraryId));
     if (state.q) params.set('q', state.q);
     if (state.format) params.set('format', state.format);
-    if (seriesFilter) params.set('series', seriesFilter);
     var sortParts = state.sort.split(':');
+
     params.set('sort', sortParts[0]);
     params.set('order', sortParts[1] || 'asc');
     params.set('page', String(state.page));
@@ -1904,29 +1687,17 @@
       state.pages = data.pages;
       state.lastElapsed = data.elapsed_ms || 0;
       state.books = state.books.concat(data.books || []);
-      state.seriesOn = !!data.series;
-      state.seriesGroups = data.groups || [];
 
+      var cards = (data.books || []).map(cardHTML).join('');
       if (grid) {
-        if (state.seriesOn && !seriesFilter) {
-          // 书库总览：同一个系列合并成一张卡，散书在最前面照常铺开
-          paintBookSections(grid, data.books || [], !reset);
+        if (reset) {
+          // 整块只改一次，只触发一次重绘 —— 不做"先清空再逐条插入"。
+          grid.innerHTML = cards;
         } else {
-          // 普通平铺，或者正在看某个系列 —— 这时候要看的就是里面每一本书
-          var cards = (data.books || []).map(cardHTML).join('');
-          if (reset) {
-            // 整块只改一次，只触发一次重绘 —— 不做"先清空再逐条插入"。
-            grid.innerHTML = cards;
-          } else {
-            grid.insertAdjacentHTML('beforeend', cards);
-          }
+          grid.insertAdjacentHTML('beforeend', cards);
         }
       }
       if (reset) state.wallSig = wallQuerySig();
-
-      // 顶栏标题在整段浏览里保持不变；当前系列交给返回栏去说
-      renderSeriesBar();
-
 
       renderEmptyState();
       closeBootGate();
@@ -2048,10 +1819,7 @@
 
               '<div class="detail-tags">' +
                 '<span class="tag ' + (isPDF ? '' : 'accent') + '">' + esc(b.format.toUpperCase()) + '</span>' +
-                (b.series
-                  ? '<span class="tag accent">' + esc(b.series) +
-                      (b.volume ? ' · 第 ' + esc(b.volume) + ' 卷' : '') + '</span>'
-                  : '') +
+
                 '<span class="tag">' + esc(b.size_human) + '</span>' +
                 '<span class="tag">' + iconHTML('builtin:library') + esc(b.library_name) + '</span>' +
                 (b.meta_locked
@@ -2241,25 +2009,7 @@
       });
     }
 
-    if (!b.series) {
-      fallback().catch(function () { /* 推荐失败不影响详情 */ });
-      return;
-    }
-
-    var params = new URLSearchParams();
-    params.set('library_id', String(b.library_id));
-    params.set('page_size', '12');
-    params.set('sort', 'title');
-    params.set('q', b.series);
-
-    api('/api/books?' + params.toString()).then(function (d) {
-      var others = (d.books || []).filter(function (x) { return x.id !== b.id; });
-      if (others.length) {
-        paint('同系列 · ' + b.series, others.slice(0, 12));
-        return;
-      }
-      return fallback();
-    }).catch(function () { /* 推荐失败不影响详情 */ });
+    fallback().catch(function () { /* 推荐失败不影响详情 */ });
   }
 
   /* ------------------------------------------------------------------ 管理后台 */
@@ -2269,6 +2019,10 @@
     stopHeroRotation();
     view.setAttribute('data-view', 'admin');
     setTopbarTools(false);
+
+    // 版式：上面一横排"概览数字"（藏书、格式、体积、书库数），
+    // 下面左边是"管理员工具"（横幅数据源 / 书库 / 账号），右边是注册设置与系统信息。
+    // 统计不再挤在侧栏底部，管理员一眼就能看到整个书库的规模。
     view.innerHTML =
       '<div class="page-head">' +
         '<div class="grow">' +
@@ -2276,46 +2030,61 @@
           '<div class="page-sub">系统概览、注册设置与管理员工具</div>' +
         '</div>' +
       '</div>' +
-      '<div class="admin-grid">' +
-        '<section class="admin-card">' +
-          '<div class="admin-card-head">' +
-            '<div>' +
-              '<h2>开放注册</h2>' +
-              '<p>关闭后只有管理员能在「账号管理」里创建账号。</p>' +
-            '</div>' +
-            '<label class="switch" title="开放注册">' +
-              '<input id="allow-register" type="checkbox" disabled aria-label="开放注册">' +
-              '<span class="switch-track"></span>' +
-            '</label>' +
+
+      '<div class="admin-metrics" id="admin-metrics">' +
+        metricHTML('藏书总数', '—', '本') +
+        metricHTML('EPUB', '—', '') +
+        metricHTML('PDF', '—', '') +
+        metricHTML('书库', '—', '座') +
+      '</div>' +
+
+      '<div class="admin-layout">' +
+        '<section class="admin-section">' +
+          '<div class="admin-section-head"><h2>管理员工具</h2></div>' +
+          '<div class="admin-tools">' +
+            '<a class="admin-card admin-link" href="#/admin/featured">' +
+              '<div class="admin-link-head"><span class="admin-icon">' + svg(ICONS.dice) + '</span>' +
+                '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
+              '<h3>横幅数据源</h3>' +
+              '<p>首页轮播用哪些书：每日推荐书单，或从指定书库里随机取。</p>' +
+            '</a>' +
+
+            '<a class="admin-card admin-link" href="#/libraries">' +
+              '<div class="admin-link-head"><span class="admin-icon">' + iconHTML('builtin:library') + '</span>' +
+                '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
+              '<h3>书库管理</h3>' +
+              '<p>新建书库、修改目录、上传封面、触发扫描或删除书库。</p>' +
+            '</a>' +
+
+            '<a class="admin-card admin-link" href="#/users">' +
+              '<div class="admin-link-head"><span class="admin-icon">' + iconHTML('builtin:user') + '</span>' +
+                '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
+              '<h3>账号管理</h3>' +
+              '<p>创建账号、调整角色、重置密码、删除账号。</p>' +
+            '</a>' +
           '</div>' +
-          '<div id="register-state" class="hint">读取中…</div>' +
         '</section>' +
 
-        '<a class="admin-card admin-link" href="#/admin/featured">' +
-          '<div class="admin-link-head"><span class="admin-icon">' + svg(ICONS.dice) + '</span>' +
-            '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
-          '<h2>横幅数据源</h2>' +
-          '<p>首页轮播用哪些书：每日推荐书单，或从指定书库里随机取。</p>' +
-        '</a>' +
+        '<div class="admin-side">' +
+          '<section class="admin-card">' +
+            '<div class="admin-card-head">' +
+              '<div>' +
+                '<h3>开放注册</h3>' +
+                '<p>关闭后只有管理员能在「账号管理」里创建账号。</p>' +
+              '</div>' +
+              '<label class="switch" title="开放注册">' +
+                '<input id="allow-register" type="checkbox" disabled aria-label="开放注册">' +
+                '<span class="switch-track"></span>' +
+              '</label>' +
+            '</div>' +
+            '<div id="register-state" class="hint">读取中…</div>' +
+          '</section>' +
 
-        '<a class="admin-card admin-link" href="#/libraries">' +
-          '<div class="admin-link-head"><span class="admin-icon">' + iconHTML('builtin:library') + '</span>' +
-            '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
-          '<h2>书库管理</h2>' +
-          '<p>新建书库、修改目录、上传封面、触发扫描或删除书库。</p>' +
-        '</a>' +
-
-        '<a class="admin-card admin-link" href="#/users">' +
-          '<div class="admin-link-head"><span class="admin-icon">' + iconHTML('builtin:user') + '</span>' +
-            '<span class="admin-arrow">' + svg(ICONS.chevron) + '</span></div>' +
-          '<h2>账号管理</h2>' +
-          '<p>创建账号、调整角色、重置密码、删除账号。</p>' +
-        '</a>' +
-
-        '<section class="admin-card" id="admin-info">' +
-          '<h2>系统信息</h2>' +
-          '<p>正在读取…</p>' +
-        '</section>' +
+          '<section class="admin-card" id="admin-info">' +
+            '<h3>系统信息</h3>' +
+            '<p>正在读取…</p>' +
+          '</section>' +
+        '</div>' +
       '</div>';
 
     setTopbar('管理后台', '系统设置与管理员工具');
@@ -2342,19 +2111,25 @@
       paintRegisterState(!!settings.allow_register);
 
       var st = status.stats || {};
+      var metrics = $('#admin-metrics');
+      if (metrics) {
+        metrics.innerHTML =
+          metricHTML('藏书总数', String(st.total || 0), '本') +
+          metricHTML('EPUB', String(st.epub || 0), '本') +
+          metricHTML('PDF', String(st.pdf || 0), '本') +
+          metricHTML('书库', String(status.library_count || 0), '座');
+      }
+
       var info = $('#admin-info');
       if (!info) return;
       info.innerHTML =
-        '<h2>系统信息</h2>' +
-        '<div class="admin-stats">' +
-          '<div class="admin-stat"><span>版本</span><b>v' + esc(status.version || '—') + '</b></div>' +
-          '<div class="admin-stat"><span>书库</span><b>' + (status.library_count || 0) + '</b></div>' +
-          '<div class="admin-stat"><span>书籍</span><b>' + (st.total || 0) + '</b></div>' +
-          '<div class="admin-stat"><span>EPUB / PDF</span><b>' + (st.epub || 0) + ' / ' + (st.pdf || 0) + '</b></div>' +
-          '<div class="admin-stat"><span>占用体积</span><b>' + fmtBytes(st.total_size || 0) + '</b></div>' +
-          '<div class="admin-stat"><span>PDF 封面</span><b>' + (status.pdf_support ? '可用' : '未安装') + '</b></div>' +
-        '</div>' +
-        '<div class="admin-datadir"><span>数据目录</span><code>' + esc(status.data_dir || '—') + '</code></div>';
+        '<h3>系统信息</h3>' +
+        '<div class="admin-info-rows">' +
+          adminRow('版本', 'v' + esc(status.version || '—')) +
+          adminRow('占用体积', fmtBytes(st.total_size || 0)) +
+          adminRow('PDF 封面', status.pdf_support ? '可用' : '未安装') +
+          adminRow('数据目录', '<code>' + esc(status.data_dir || '—') + '</code>', true) +
+        '</div>';
 
       if (toggle) {
         toggle.addEventListener('change', function () {
@@ -2374,6 +2149,22 @@
     });
   }
 
+  /* 概览数字：一个标签 + 一个大数字 + 单位。四个排成一排，等宽。 */
+  function metricHTML(label, value, unit) {
+    return '<div class="admin-metric">' +
+        '<span class="admin-metric-k">' + esc(label) + '</span>' +
+        '<span class="admin-metric-v">' + esc(value) +
+          (unit ? '<small>' + esc(unit) + '</small>' : '') + '</span>' +
+      '</div>';
+  }
+
+  /* 系统信息里的"标签 — 值"一行；值可以带 HTML（目录、版本号）。 */
+  function adminRow(label, valueHTML, mono) {
+    return '<div class="admin-info-row">' +
+        '<span>' + esc(label) + '</span>' +
+        '<b' + (mono ? ' class="mono"' : '') + '>' + valueHTML + '</b>' +
+      '</div>';
+  }
   /* ------------------------------------------------------------------ 书库管理 */
 
   function renderLibrariesView() {
@@ -2463,9 +2254,6 @@
           '<div class="lib-path">' + esc(lib.path) + '</div>' +
           '<div class="lib-meta">' +
             '<span>书籍 <b>' + (lib.book_count || 0) + '</b></span>' +
-            (lib.series_group
-              ? '<span class="tag ok" title="按目录最深一层的文件夹名把同系列的书聚合展示">' + svg(ICONS.books) + '系列聚合</span>'
-              : '') +
             '<span>EPUB <b>' + (lib.epub_count || 0) + '</b></span>' +
             '<span>PDF <b>' + (lib.pdf_count || 0) + '</b></span>' +
             '<span>上次扫描 ' + fmtTime(lib.last_scan_at) + '</span>' +
@@ -2582,26 +2370,6 @@
               '<button type="button" id="icon-upload" class="btn btn-sm">' + svg(ICONS.image) + '上传图标</button>' +
               '<span id="icon-upload-name" style="font-size:11.5px;color:var(--text-3)" class="u-clamp1"></span>' +
             '</div>' +
-          '</div>' +
-
-          /* 系列作品聚合：默认关闭，保持老用户看到的样子；
-             开了以后按目录最深一层的文件夹名把同系列的书并成一块。 */
-          '<div class="field">' +
-            '<div class="switch-row">' +
-              '<label class="switch-row-main" for="lib-series">' +
-                '<span class="switch-row-title">启用系列作品聚合</span>' +
-                '<span class="switch-row-desc">按预设规则自动把同系列的书聚合展示：' +
-                  '只有目录里最深一层的书，按它所在的文件夹名归成系列；更浅层的书作为散书展示。' +
-                  '关闭时保持原来的平铺列表。</span>' +
-              '</label>' +
-              '<label class="switch" title="启用系列作品聚合">' +
-                '<input id="lib-series" type="checkbox"' +
-                  (isEdit && lib.series_group ? ' checked' : '') + ' aria-label="启用系列作品聚合">' +
-                '<span class="switch-track"></span>' +
-              '</label>' +
-            '</div>' +
-            '<div class="hint">深度规则：书库根目录下的书深度为 1，每进一层文件夹加 1。' +
-              '只有深度等于「最深一层」的书参与聚合，系列名取它的直接文件夹名。</div>' +
           '</div>' +
         '</div>' +
 
@@ -2749,12 +2517,7 @@
       btn.disabled = true;
       btn.textContent = isEdit ? '保存中…' : '创建中…';
 
-      var payload = {
-        name: name,
-        path: path,
-        icon: icon,
-        series_group: !!$('#lib-series').checked
-      };
+      var payload = { name: name, path: path, icon: icon };
       var req = isEdit
         ? api('/api/libraries/' + lib.id, { method: 'PUT', body: payload })
         : api('/api/libraries', { method: 'POST', body: payload });
@@ -3301,10 +3064,6 @@
     if (parts[0] === 'lib') return { name: 'wall', libraryId: Number(parts[1]) || 0 };
     if (parts[0] === 'book') return { name: 'detail', id: Number(parts[1]) || 0 };
     if (parts[0] === 'all') return { name: 'wall', libraryId: -1 };
-    if (parts[0] === 'series') {
-      // #/series/<名称>：只看这个系列。保留当前书库（没有就是全部书籍）。
-      return { name: 'wall', libraryId: state.libraryId > 0 ? state.libraryId : -1, series: decodeURIComponent(parts[1] || '') };
-    }
     return { name: 'home' };
   }
 
@@ -3363,22 +3122,11 @@
 
     // wall：全部书籍（-1）或某个书库
     state.libraryId = r.libraryId || 0;
-    // 从 #/series/<名称> 回到 #/lib/<id>（点"返回全部"）：清掉系列筛选
-    // 点「返回全部」只是把 hash 改回 #/lib/<id>，这里必须把筛选清掉，
-    // 否则会一直卡在上一个系列里。
-    if (r.series !== undefined) {
-      seriesFilter = r.series;
-    } else {
-      seriesFilter = '';
-    }
-    lastWallLibrary = state.libraryId;
     renderSidebar();
     renderWallShell();
     loadBooks(true);
   }
 
-  // 上一次进入封面墙时的书库，用来判断"是不是换了书库"
-  var lastWallLibrary = null;
 
   /* ------------------------------------------------------------------ 初始化 */
 

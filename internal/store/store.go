@@ -86,8 +86,7 @@ func (s *Store) Migrate() error {
 			created_at   INTEGER NOT NULL,
 			updated_at   INTEGER NOT NULL,
 			last_scan_at INTEGER NOT NULL DEFAULT 0,
-			last_scan_state TEXT NOT NULL DEFAULT '',
-			series_group INTEGER NOT NULL DEFAULT 0
+			last_scan_state TEXT NOT NULL DEFAULT ''
 		)`,
 
 		`CREATE TABLE IF NOT EXISTS books (
@@ -144,9 +143,6 @@ func (s *Store) Migrate() error {
 	}
 	if err := s.ensureColumn("books", "deleted", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return fmt.Errorf("迁移 books.deleted 失败: %w", err)
-	}
-	if err := s.ensureColumn("libraries", "series_group", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		return fmt.Errorf("迁移 libraries.series_group 失败: %w", err)
 	}
 	return nil
 }

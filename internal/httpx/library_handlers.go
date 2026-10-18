@@ -45,10 +45,9 @@ func (s *Server) getLibrary(c *gin.Context) {
 
 func (s *Server) createLibrary(c *gin.Context) {
 	var req struct {
-		Name        string `json:"name"`
-		Path        string `json:"path"`
-		Icon        string `json:"icon"`
-		SeriesGroup bool   `json:"series_group"`
+		Name string `json:"name"`
+		Path string `json:"path"`
+		Icon string `json:"icon"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "请求格式错误")
@@ -90,16 +89,6 @@ func (s *Server) createLibrary(c *gin.Context) {
 		fail(c, 400, err.Error())
 		return
 	}
-	if req.SeriesGroup {
-		if err := s.st.SetLibrarySeriesGroup(lib.ID, true); err != nil {
-			failErr(c, 500, "保存系列聚合设置失败", err)
-			return
-		}
-		if lib, err = s.st.GetLibrary(lib.ID); err != nil {
-			failErr(c, 500, "读取书库失败", err)
-			return
-		}
-	}
 
 	// 新建后自动触发一次全量扫描。
 	scanStarted := true
@@ -125,10 +114,9 @@ func (s *Server) updateLibrary(c *gin.Context) {
 	}
 
 	var req struct {
-		Name        *string `json:"name"`
-		Path        *string `json:"path"`
-		Icon        *string `json:"icon"`
-		SeriesGroup *bool   `json:"series_group"`
+		Name *string `json:"name"`
+		Path *string `json:"path"`
+		Icon *string `json:"icon"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		fail(c, 400, "请求格式错误")
@@ -168,18 +156,6 @@ func (s *Server) updateLibrary(c *gin.Context) {
 	if err != nil {
 		fail(c, 400, err.Error())
 		return
-	}
-
-	// 系列聚合是单独一列：只改它时不触发重新扫描（聚合在展示层现算，与扫描无关）。
-	if req.SeriesGroup != nil && *req.SeriesGroup != lib.SeriesGroup {
-		if err := s.st.SetLibrarySeriesGroup(id, *req.SeriesGroup); err != nil {
-			failErr(c, 500, "保存系列聚合设置失败", err)
-			return
-		}
-		if lib, err = s.st.GetLibrary(id); err != nil {
-			failErr(c, 500, "读取书库失败", err)
-			return
-		}
 	}
 
 	// 目录换了：清空旧记录与封面，然后重新扫描。
@@ -367,7 +343,6 @@ func libraryJSON(lib *store.Library, st *scanner.Status) gin.H {
 		"book_count":      lib.BookCount,
 		"epub_count":      lib.EpubCount,
 		"pdf_count":       lib.PdfCount,
-		"series_group":    lib.SeriesGroup,
 		"scanning":        false,
 	}
 	if lib.Cover != "" {

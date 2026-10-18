@@ -14,7 +14,6 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"libra/internal/bookmeta"
-	booklib "libra/internal/library"
 	"libra/internal/store"
 )
 
@@ -42,35 +41,6 @@ func (s *Server) listBooks(c *gin.Context) {
 		PageSize:  pageSize,
 	}
 
-	// 系列聚合：按 ?series= 过滤出某个系列 / 散书。
-	// 关着聚合的书库不受影响，行为和以前完全一致。
-	var seriesCanvasOn bool
-	if canvas, on, cerr := s.seriesCanvas(q.LibraryID); cerr == nil {
-		seriesCanvasOn = on
-		_ = canvas
-	}
-	seriesFilter := seriesGroupQuery(c.Query("series"))
-	if seriesFilter != "" && seriesCanvasOn {
-		ids, err := s.seriesFilterIDs(seriesFilter, q.LibraryID)
-		if err != nil {
-			failErr(c, 500, "计算系列归属失败", err)
-			return
-		}
-		if len(ids) == 0 {
-			ok(c, gin.H{
-				"books":     []gin.H{},
-				"total":     0,
-				"page":      page,
-				"page_size": pageSize,
-				"pages":     0,
-				"has_more":  false,
-				"groups":    s.seriesGroups(q.LibraryID),
-			})
-			return
-		}
-		q.SeriesIDs = ids
-	}
-
 	start := time.Now()
 	books, total, err := s.st.ListBooks(q)
 	if err != nil {
@@ -80,53 +50,9 @@ func (s *Server) listBooks(c *gin.Context) {
 	// elapsed_ms 给封面墙页脚用，顺便也是排查慢查询最省事的那个数字。
 	elapsedMS := math.Round(float64(time.Since(start).Microseconds())/100) / 10
 
-	// 系列归属：把当前这一页的书换成带相对路径的查询结果，再标上系列名。
-	// 列表主查询本来就不查 path 列（不对外暴露目录结构），这里只为这一页补查一次。
-	var relByID map[int64]string
-	var base int
-	seriesOn := false
-	if scope, on, serr := s.seriesCanvas(q.LibraryID); serr == nil && on {
-		seriesOn = true
-		if entries, eerr := s.seriesBaseEntries(scope); eerr == nil {
-			base = booklib.BaseDepth(entries)
-		}
-		relByID = s.relPathsFor(books)
-	}
-
-	// 这一页的书各自属于哪个系列。
-	// · 看的是单座书库：uid 带上书库，前端按 uid 合并成一张卡；
-	// · 看的是"全部书籍"：同名系列跨书库合并成一张（uid 只有系列名），
-	//   于是列表里能出现一条同时含多座书库的书、本数也是跨库合计的系列。
-	seriesOf := make(map[int64]string, len(books))
-	for i := range books {
-		if base <= 0 || relByID == nil {
-			continue
-		}
-		rel, ok := relByID[books[i].ID]
-		if !ok || rel == "" {
-			continue
-		}
-		b := books[i]
-		b.RelPath = rel
-		if name, hit := seriesInfo(&b, base); hit {
-			seriesOf[b.ID] = seriesKey(b.LibraryID, name, q.LibraryID)
-		}
-	}
-
-	// 合并卡上要显示的"共 N 本"是整条系列的总数，不是这一页里露出的那几本。
-	counts := s.seriesCounts(seriesOf)
-
 	items := make([]gin.H, 0, len(books))
 	for i := range books {
-		item := bookJSON(&books[i])
-		if uid, hit := seriesOf[books[i].ID]; hit {
-			name := uid[strings.Index(uid, "|")+1:]
-			item["series_name"] = name
-			item["series_uid"] = uid
-			item["series_count"] = counts[uid]
-			item["rel_depth"] = booklib.Depth(relByID[books[i].ID])
-		}
-		items = append(items, item)
+		items = append(items, bookJSON(&books[i]))
 	}
 
 	pages := 0
@@ -141,17 +67,7 @@ func (s *Server) listBooks(c *gin.Context) {
 		"pages":      pages,
 		"has_more":   page < pages,
 		"elapsed_ms": elapsedMS,
-		"series":     seriesOn,
-		"groups":     seriesGroupsJSON(s.seriesGroups(q.LibraryID)),
 	})
-}
-
-// seriesGroupsJSON 保证空切片序列化成 [] 而不是 null。
-func seriesGroupsJSON(groups []gin.H) []gin.H {
-	if groups == nil {
-		return []gin.H{}
-	}
-	return groups
 }
 
 // getBook 返回单本书的详情。
@@ -608,13 +524,6 @@ func bookJSON(b *store.Book) gin.H {
 		"meta_locked":  b.MetaLocked == 1,
 		"created_at":   b.CreatedAt,
 		"updated_at":   b.UpdatedAt,
-	}
-	// 系列信息按需现算：前端拿它把同一套书并成卡片、详情页显示"第 N 卷"。
-	if series, volume := store.SplitSeries(title, b.Dir); series != "" {
-		out["series"] = series
-		if volume != "" {
-			out["volume"] = volume
-		}
 	}
 	return out
 }

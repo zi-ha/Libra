@@ -226,7 +226,7 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 /* 数字一律等宽，跳动时不抖 */
-.u-num, .side-count, .lib-meta b, .spec dd, .side-stats .v, .hero-meta b,
+.u-num, .side-count, .lib-meta b, .spec dd, .hero-meta b,
 .meta-row b, .feed-count { font-variant-numeric: tabular-nums; }
 
 /* ------------------------------------------------------------------ 品牌 */
@@ -367,22 +367,6 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   padding: 12px 12px 14px;
   border-top: 1px solid var(--border);
 }
-
-.side-stats { padding: 2px 4px 10px; }
-.side-stats .k { font-size: 11.5px; color: var(--text-3); letter-spacing: .02em; }
-.side-stats .v {
-  font-size: 24px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15;
-  margin-top: 2px;
-}
-.side-stats .v small {
-  font-size: 12px; font-weight: 500; color: var(--text-3);
-  margin-left: 4px; letter-spacing: 0;
-}
-.side-stats .split {
-  display: flex; flex-wrap: wrap; gap: 3px 14px; margin-top: 8px;
-  font-size: 11.5px; color: var(--text-3);
-}
-.side-stats .split b { color: var(--text-2); font-weight: 600; }
 
 .usermenu-wrap { position: relative; flex: none; }
 .side-foot .usermenu-wrap { width: 100%; }
@@ -1222,18 +1206,6 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 }
 .card-badge.pdf { background: rgba(190, 58, 42, .82); }
 
-.card-series {
-  position: absolute; top: 8px; right: 8px; z-index: 4;
-  max-width: 62%;
-  padding: 2px 7px;
-  font-size: 10px; font-weight: 700;
-  border-radius: 5px;
-  color: #fff;
-  background: rgba(62, 166, 255, .9);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  box-shadow: 0 2px 8px -3px rgba(0, 0, 0, .8);
-}
-
 /* hover 浮出的操作：下载 / 详情 */
 .card-tools {
   position: absolute; left: 8px; right: 8px; bottom: 8px; z-index: 4;
@@ -1358,47 +1330,6 @@ body.view-detail .view > .back-link { display: none; }
 .topbar.is-wall .header-tools .segmented { margin-right: 2px; }
 .topbar.is-wall .header-tools .select { max-width: 190px; }
 
-/* 系列页顶部那一条：返回全部 + 当前系列名与本数 */
-.series-bar {
-  display: flex; align-items: center; gap: 10px;
-  margin: 2px 0 16px;
-}
-.series-chip.back { text-decoration: none; }
-.series-chip.back svg { width: 14px; height: 14px; }
-.series-bar-label { font-size: 13px; font-weight: 650; color: var(--text); }
-.series-bar-count { font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); }
-
-/* 封面墙标题：正在看某个系列时变成「系列名 + 所属书库」，点一下退回全部。 */
-.title-back {
-  display: inline-flex; align-items: baseline; gap: 10px;
-  color: inherit; text-decoration: none;
-  max-width: 100%;
-}
-.title-back:hover { color: var(--text); }
-.title-back-sub {
-  font-size: 12.5px; font-weight: 500; color: var(--text-3);
-  padding-left: 10px; border-left: 1px solid var(--border-2);
-}
-/* 系列合并卡：封面沿用系列里排第一的那本，角标写"共 N 本" */
-.card-badge.series {
-  display: inline-flex; align-items: center; gap: 4px;
-  background: rgba(10, 12, 16, .72);
-  color: #f0f4fa;
-  backdrop-filter: blur(6px);
-}
-.card-badge.series svg { width: 11px; height: 11px; }
-[data-theme="light"] .card-badge.series { background: rgba(255, 255, 255, .88); color: #1c1f26; }
-.card-series-group .card-cover::after {
-  /* 合并卡只在自己的描边上加一点强调色，不额外加阴影 */
-  content: ""; position: absolute; inset: 0; pointer-events: none;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px var(--accent-line);
-  opacity: .6;
-  transition: opacity .18s var(--ease);
-}
-.card-series-group:hover .card-cover::after { opacity: 1; }
-.card-series-group .card-title { font-weight: 650; }
-
 .detail-hero {
   position: relative;
   border-radius: var(--r-lg);
@@ -1490,14 +1421,60 @@ body.view-detail .view > .back-link { display: none; }
 /* 详情页的"同系列"网格标题里已经有年份之类的小字时，别让卡片太高 */
 .detail-more .card-meta { display: none; }
 
-/* ------------------------------------------------------------------ 管理后台 */
+/* ------------------------------------------------------------------ 管理后台
+   版式：最上面一排"概览数字"（藏书 / 格式 / 书库），下面是两栏 ——
+   左边"管理员工具"（横幅数据源、书库、账号），右边注册设置与系统信息。
+   数字比卡片更先说话：管理员进来第一眼看到的应该是书库规模。 */
 
-.admin-grid {
+.admin-metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 26px;
+}
+.admin-metric {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  min-width: 0;
+}
+.admin-metric-k {
+  font-size: 11.5px; font-weight: 550; color: var(--text-4);
+  letter-spacing: .02em;
+}
+.admin-metric-v {
+  font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1.05;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.admin-metric-v small {
+  font-size: 12px; font-weight: 500; color: var(--text-4);
+  margin-left: 4px; letter-spacing: 0;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(300px, 1fr);
+  gap: 18px;
   align-items: start;
 }
+.admin-section-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin: 0 0 12px;
+}
+.admin-section-head h2 {
+  font-size: 15px; font-weight: 650; letter-spacing: -.015em; color: var(--text-2);
+}
+.admin-tools {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+.admin-side { display: flex; flex-direction: column; gap: 12px; }
+
 .admin-card {
   display: block;
   padding: 18px;
@@ -1505,14 +1482,14 @@ body.view-detail .view > .back-link { display: none; }
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   min-width: 0;
-  transition: border-color .18s var(--ease);
+  transition: border-color .18s var(--ease), background .18s var(--ease);
 }
-.admin-card:hover { border-color: var(--border-2); }
-.admin-card h2 { font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
+.admin-card h3 { font-size: 14.5px; font-weight: 650; letter-spacing: -.015em; color: var(--text); }
 .admin-card p {
   margin-top: 7px;
   font-size: 12.5px; line-height: 1.7; color: var(--text-3);
 }
+.admin-link:hover { border-color: var(--border-2); background: var(--surface-2); }
 .admin-card-head {
   display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
 }
@@ -1524,15 +1501,34 @@ body.view-detail .view > .back-link { display: none; }
   width: 34px; height: 34px;
   display: flex; align-items: center; justify-content: center;
   border-radius: 9px;
-  color: var(--accent);
-  background: var(--accent-soft);
+  color: var(--text-2);
+  background: var(--surface-2);
 }
 .admin-icon svg { width: 18px; height: 18px; }
-.admin-arrow { color: var(--text-3); display: flex; }
+.admin-arrow { color: var(--text-4); display: flex; }
 .admin-arrow svg { width: 16px; height: 16px; }
-.admin-link:hover .admin-arrow { color: var(--accent); }
+.admin-link:hover .admin-arrow { color: var(--text); }
 
-/* 开关 */
+/* 系统信息：一行一项，标签淡、值实 */
+.admin-info-rows { margin-top: 14px; display: flex; flex-direction: column; }
+.admin-info-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+  font-size: 12.5px;
+}
+.admin-info-row:first-child { border-top: 0; padding-top: 2px; }
+.admin-info-row > span { color: var(--text-4); flex: none; }
+.admin-info-row b {
+  font-weight: 600; color: var(--text-2); text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.admin-info-row b.mono {
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
+  word-break: break-all;
+}
+
+/* 开关：开放注册、每日推荐开关等都用它 */
 .switch { position: relative; display: inline-flex; flex: none; cursor: pointer; }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch-track {
@@ -1567,27 +1563,6 @@ body.view-detail .view > .back-link { display: none; }
 
 #register-state { margin-top: 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 #register-state .tag { margin: 0; }
-.admin-stats {
-  margin-top: 14px;
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
-}
-.admin-stat {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--surface-2);
-  min-width: 0;
-}
-.admin-stat span { display: block; font-size: 11px; color: var(--text-3); }
-.admin-stat b { display: block; margin-top: 3px; font-size: 14px; font-weight: 700; word-break: break-word; }
-.admin-datadir { margin-top: 12px; font-size: 11.5px; color: var(--text-3); }
-.admin-datadir code {
-  display: block; margin-top: 4px;
-  padding: 8px 10px; border-radius: 7px;
-  background: var(--surface-2);
-  font-family: var(--font-mono); font-size: 11.5px;
-  color: var(--text-2);
-  word-break: break-all;
-}
 
 /* ------------------------------------------------------------------ 列表页（书库 / 账号） */
 
@@ -1928,82 +1903,6 @@ body.view-detail .view > .back-link { display: none; }
 }
 .field .hint { font-size: 11.5px; color: var(--text-3); margin-top: 6px; line-height: 1.6; }
 
-/* 开关型字段：左边一段标题 + 说明，右边一个拨动开关。
-   用在"启用系列作品聚合"这类只有开关、没有输入框的设置上。 */
-.switch-row {
-  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
-  padding: 12px 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-}
-.switch-row-main { display: flex; flex-direction: column; gap: 5px; cursor: pointer; min-width: 0; }
-.switch-row-title { font-size: 13px; font-weight: 600; color: var(--text); }
-.switch-row-desc { font-size: 12px; color: var(--text-3); line-height: 1.65; }
-.switch-row .switch { margin-top: 1px; }
-
-/* ------------------------------------------------------------------ 系列聚合
-   书库打开「系列作品聚合」后，封面墙按块展示：散书一块，每个系列一块。
-   关闭时这一层完全不存在，和以前的平铺网格一模一样。 */
-
-.series-bar {
-  display: flex; flex-wrap: wrap; gap: 8px;
-  margin: -6px 0 18px;
-}
-.series-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 30px; padding: 0 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-pill);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font-size: 12.5px; font-weight: 550;
-  cursor: pointer;
-  max-width: 240px;
-  transition: border-color .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
-}
-.series-chip:hover { border-color: var(--border-2); color: var(--text); }
-.series-chip.on {
-  background: var(--accent-soft);
-  border-color: var(--accent-line);
-  color: var(--accent);
-}
-.series-chip-n {
-  font-family: var(--font-mono); font-size: 10.5px;
-  padding: 0 5px; border-radius: 99px;
-  background: var(--surface-3); color: var(--text-3);
-}
-.series-chip.on .series-chip-n { background: transparent; color: inherit; opacity: .75; }
-
-.book-section { margin-bottom: 26px; }
-.book-section:last-child { margin-bottom: 0; }
-/* 分块模式下每一块内部仍然是一行一行铺开的网格；块之间只留一点间距。
-   （#grid 本身就是网格，块是它的格子 —— 不要改成 block，否则块会纵向堆成一列。） */
-.book-section > .grid { gap: var(--grid-gap-y) var(--grid-gap-x); }
-/* 「全部书籍」里合并卡铺成一整行：它可能横跨好几座书库，单独占满一行才不会被挤变形 */
-.book-section[data-key="__series__"] { grid-column: 1 / -1; }
-/* 散书在某个系列之后出现时，也要整行铺开；否则它只会占第一格，里面的封面被挤成一列 */
-#grid > .book-section { grid-column: 1 / -1; }
-.series-slot { display: block; min-width: 0; }
-.series-slot .card { width: 100%; }
-.series-head {
-  display: flex; align-items: center; gap: 8px;
-  margin: 0 0 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border);
-}
-.series-icon {
-  width: 20px; height: 20px; flex: none;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-3);
-}
-.series-icon svg { width: 15px; height: 15px; }
-.series-name {
-  font-size: 15px; font-weight: 650; letter-spacing: -.018em; color: var(--text);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.series-count { font-size: 11.5px; color: var(--text-4); font-variant-numeric: tabular-nums; }
-
 .input {
   width: 100%; height: 40px; padding: 0 13px;
   background: var(--surface-2);
@@ -2314,7 +2213,7 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
   :root { --side-w: var(--side-w-icon); }
   .sidebar .side-head { justify-content: center; padding: 18px 8px 12px; }
   .sidebar .brand-name, .sidebar .side-count,
-  .side-stats, .usermenu-btn .u-name, .usermenu-btn .chev { display: none; }
+  .usermenu-btn .u-name, .usermenu-btn .chev { display: none; }
   .side-item { justify-content: center; padding: 6px; }
   .side-fold { display: none; }
   .side-foot { padding: 12px 8px 16px; }
@@ -2323,6 +2222,11 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
 }
 
 /* 窄屏：侧栏变成抽屉，顶栏换行，搜索独占一行 */
+@media (max-width: 1100px) {
+  .admin-layout { grid-template-columns: minmax(0, 1fr); }
+  .admin-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-width: 1000px) {
   :root { --page-x: 18px; }
   .shell { grid-template-columns: minmax(0, 1fr); }
@@ -2336,7 +2240,7 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
     z-index: 70;
   }
   body.nav-open .sidebar { transform: none; }
-  .sidebar .brand-name, .sidebar .side-count, .side-stats,
+  .sidebar .brand-name, .sidebar .side-count,
   .usermenu-btn .u-name, .usermenu-btn .chev { display: revert; }
   .sidebar .side-head { justify-content: flex-start; padding: 18px 18px 12px; }
   .side-item { justify-content: flex-start; padding: 6px 10px; }

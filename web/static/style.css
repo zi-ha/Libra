@@ -843,8 +843,7 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 .hero-dots {
   position: absolute; z-index: 4; right: 24px; bottom: 14px;
   display: flex; gap: 6px; align-items: center;
-}
-.hero-dot {
+}.hero-dot {
   width: 7px; height: 7px; padding: 0;
   border: 0; border-radius: 99px;
   background: rgba(255, 255, 255, .3);
@@ -853,6 +852,50 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 }
 .hero-dot:hover { background: rgba(255, 255, 255, .6); }
 .hero-dot.on { width: 20px; background: #fff; }
+
+/* 管理员在横幅右上角的小工具：换一批 / 数据源。
+   半透明玻璃小圆钮，和左右翻页按钮同一套材质，但更小、更低调 ——
+   它们不属于内容，只是给管理员留的一个入口。 */
+.hero-tools {
+  position: absolute; z-index: 5; top: 14px; right: 16px;
+  display: flex; gap: 6px;
+}
+.hero-tool {
+  width: 30px; height: 30px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 50%;
+  background: rgba(10, 12, 16, .42);
+  color: rgba(244, 246, 250, .82);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background .18s var(--ease), border-color .18s var(--ease), color .18s var(--ease);
+}
+.hero-tool:hover {
+  background: rgba(18, 22, 30, .82);
+  border-color: rgba(255, 255, 255, .38);
+  color: #fff;
+}
+.hero-tool:focus-visible { outline: 2px solid rgba(255, 255, 255, .7); outline-offset: 2px; }
+.hero-tool svg { width: 15px; height: 15px; }
+
+/* 横幅空态：数据源里一本书都没有时，给管理员一个安静的去处。
+   普通成员看不到这块（脚本直接不渲染）。 */
+.hero-empty { display: flex; align-items: center; justify-content: center; }
+.hero-empty-inner {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  padding: 0 24px; text-align: center; color: var(--text-2);
+}
+.hero-empty-icon {
+  width: 46px; height: 46px; margin-bottom: 6px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 14px; background: var(--surface-3); color: var(--text-2);
+}
+.hero-empty-icon svg { width: 22px; height: 22px; }
+.hero-empty-inner h2 { font-size: 16px; font-weight: 650; color: var(--text); }
+.hero-empty-inner p { font-size: 12.5px; color: var(--text-3); line-height: 1.7; max-width: 380px; }
+.hero-empty-inner .btn { margin-top: 12px; }
 
 /* 横幅左右翻页按钮：压在封面糊底上，半透明玻璃圆钮。
    左右各留 10px，正文区有 48px 内边距，所以不会盖住封面与文字。 */
@@ -1602,6 +1645,139 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   border-top: 1px solid var(--border);
 }
 .modal-foot.split { justify-content: space-between; align-items: center; }
+/* 面板高度超过一屏时，只滚中间那一块，标题和底部按钮始终在位 */
+.modal-panel.featured-panel { display: flex; flex-direction: column; max-height: calc(100vh - 48px); }
+.modal-panel.featured-panel .modal-body { overflow-y: auto; }
+
+/* ------------------------------------------------------------------ 横幅数据源面板
+   上半部分是每日推荐书单（可拖动排序），下半部分是随机书库的多选小胶囊。
+   都用界面里已有的令牌，不引入新的颜色。 */
+
+.feat-block { margin-bottom: 22px; }
+.feat-block:last-of-type { margin-bottom: 14px; }
+.feat-block-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  margin-bottom: 12px;
+}
+.feat-block-head h4 { font-size: 13.5px; font-weight: 650; color: var(--text); }
+.feat-block-head p { font-size: 12px; color: var(--text-3); margin-top: 4px; line-height: 1.6; }
+
+.feat-empty {
+  display: flex; align-items: center; gap: 12px;
+  padding: 16px 18px;
+  border: 1px dashed var(--border-2); border-radius: var(--r-md);
+  color: var(--text-3); font-size: 12.5px; line-height: 1.6;
+}
+.feat-empty-icon {
+  width: 32px; height: 32px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px; background: var(--surface-3); color: var(--text-2);
+}
+.feat-empty-icon svg { width: 17px; height: 17px; }
+
+.feat-list {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 300px; overflow-y: auto;
+}
+.feat-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 8px 7px 4px;
+  background: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  transition: border-color .15s var(--ease), background .15s var(--ease), opacity .15s var(--ease);
+}
+.feat-item:hover { border-color: var(--border-2); }
+.feat-item.is-dragging { opacity: .45; }
+.feat-item.is-drop-target { border-color: var(--accent-line); }
+.feat-item.is-removing { opacity: .4; pointer-events: none; }
+.feat-grip {
+  width: 22px; height: 28px; flex: none;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); cursor: grab;
+}
+.feat-grip svg { width: 14px; height: 14px; }
+.feat-pick-cover {
+  position: relative; flex: none;
+  width: 34px; height: 48px; border-radius: 4px; overflow: hidden;
+  background: var(--surface-3);
+}
+.feat-pick-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.feat-pick-cover .fallback { display: none; }
+.feat-pick-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.feat-pick-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.feat-pick-meta { font-size: 11.5px; color: var(--text-3); }
+.feat-remove { flex: none; }
+
+.feat-search {
+  position: relative; margin-top: 12px;
+}
+.feat-search svg {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  width: 15px; height: 15px; color: var(--text-3); pointer-events: none;
+}
+.feat-search .input { padding-left: 35px; }
+.feat-results {
+  display: flex; flex-direction: column; gap: 4px;
+  margin-top: 8px; max-height: 240px; overflow-y: auto;
+}
+.feat-results:empty { margin-top: 0; }
+.feat-cand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; border-radius: var(--r-md);
+}
+.feat-cand:hover { background: var(--surface-hover); }
+.feat-cand-cover {
+  width: 26px; height: 37px; flex: none; border-radius: 3px; overflow: hidden;
+  background: var(--surface-3);
+}
+.feat-cand-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.feat-cand-cover .fallback { display: none; }
+.feat-cand-title { flex: 1; min-width: 0; font-size: 12.5px; }
+.feat-cand-meta {
+  flex: none; max-width: 120px; font-size: 11.5px; color: var(--text-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.feat-cand .btn { flex: none; }
+.feat-hint { font-size: 12px; color: var(--text-3); padding: 6px 2px; }
+
+.feat-libs { display: flex; flex-wrap: wrap; gap: 8px; }
+.feat-lib {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 12.5px; font-weight: 550;
+  cursor: pointer;
+  transition: border-color .15s var(--ease), background .15s var(--ease), color .15s var(--ease);
+}
+.feat-lib:hover { border-color: var(--border-2); color: var(--text); }
+.feat-lib.on {
+  background: var(--accent-soft);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+.feat-lib-dot {
+  width: 8px; height: 8px; border-radius: 3px; flex: none;
+  background: hsl(var(--tint) var(--tint-s) var(--tint-l));
+}
+.feat-lib-count {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-3);
+}
+.feat-lib.on .feat-lib-count { color: inherit; opacity: .8; }
+
+.feat-note {
+  display: flex; gap: 8px; align-items: flex-start;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  font-size: 11.5px; color: var(--text-3); line-height: 1.6;
+}
+.feat-note svg { width: 14px; height: 14px; margin-top: 2px; flex: none; }
+#feat-msg { margin-top: 12px; }
 
 /* ------------------------------------------------------------------ 表单 */
 
@@ -2004,6 +2180,22 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
   .hero-actions { margin-top: 14px; gap: 8px; }
   .hero-actions .btn { height: 34px; padding: 0 14px; font-size: 12.5px; }
   .hero-dots { display: flex; right: 18px; bottom: 10px; }
+  /* 窄屏信息多，十个指示点挤不下：只保留一个小计数"3 / 10" */
+  .hero-dots .hero-dot { display: none; }
+  .hero-dots .hero-dot.on {
+    display: block; width: auto; height: auto;
+    padding: 0; border-radius: 0; background: none;
+    font-family: var(--font-mono); font-size: 11px;
+    color: rgba(255, 255, 255, .82);
+    pointer-events: none;
+  }
+  .hero-dots .hero-dot.on::after {
+    content: attr(data-count);
+  }
+  /* 管理员工具挪到左下角：右上角留给"入库时间"那一行字，别压住它 */
+  .hero-tools { top: auto; bottom: 8px; left: 18px; right: auto; }
+  .hero-tool { width: 26px; height: 26px; }
+  .hero-tool svg { width: 13px; height: 13px; }
   .rail-btn { width: 34px; height: 34px; }
   .rail-btn.prev { left: -12px; }
   .rail-btn.next { right: -12px; }

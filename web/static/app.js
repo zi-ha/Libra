@@ -56,7 +56,8 @@
     user: '<circle cx="12" cy="8.4" r="3.7"/><path d="M4.6 20.2a7.6 7.6 0 0 1 14.8 0"/>',
     key: '<circle cx="8" cy="12" r="3.6"/><path d="M11.6 12H20l-.1 3M17.4 12v3"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>',
-    play: '<path d="M8 5.5l11 6.5-11 6.5z"/>'
+    play: '<path d="M8 5.5l11 6.5-11 6.5z"/>',
+    dice: '<rect x="4" y="4" width="16" height="16" rx="3.2"/><circle cx="9" cy="9" r="1.3"/><circle cx="15" cy="15" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="15" cy="9" r="1.3"/><circle cx="9" cy="15" r="1.3"/>',
   };
 
   var DEFAULT_ICON = 'builtin:book';
@@ -303,8 +304,9 @@
     iconCache: null,
     detailId: 0,
     wallSig: '',        // 上次封面墙查询条件，用于返回时直接复用已有卡片
-    featured: null,     // 精选横幅数据（每会话取一次，扫描结束后失效）
+    featured: null,     // 首页横幅本轮内容（每会话取一次，扫描 / 数据源变更后失效）
     featuredIdx: 0,
+    featuredForce: false, // 下一次取横幅时跳过服务端一小时缓存（管理员点了"换一批"）
     heroTimer: null,
     libCovers: {},      // 书库宫格拼贴：libraryId -> [封面 URL]
     lastElapsed: 0,
@@ -576,7 +578,10 @@
 
   function loadFeatured() {
     if (state.featured) return Promise.resolve(state.featured);
-    return api('/api/featured?limit=10').then(function (d) {
+    // force=1：绕过服务端一小时的随机结果缓存，立刻重新抽一轮。
+    var url = '/api/featured?limit=10' + (state.featuredForce ? '&refresh=1' : '');
+    state.featuredForce = false;
+    return api(url).then(function (d) {
       var list = (d.books || []).filter(function (b) { return !!coverURL(b); });
       if (!list.length) list = d.books || [];
       state.featured = list;
@@ -584,6 +589,37 @@
     }).catch(function () {
       state.featured = [];
       return [];
+    });
+  }
+
+  /* 首页横幅右上角的编辑入口：只在管理员身份下出现。
+     普通成员看到的横幅与数据源完全无关，不显示任何来源标注。 */
+  function heroToolbarHTML() {
+    if (!IS_ADMIN) return '';
+    return '<div class="hero-tools" id="hero-tools">' +
+        '<button type="button" class="hero-tool" id="hero-shuffle" title="换一批" aria-label="换一批">' +
+          svg(ICONS.refresh) + '</button>' +
+        '<button type="button" class="hero-tool" id="hero-config" ' +
+          'title="横幅数据源与每日推荐" aria-label="横幅数据源与每日推荐">' +
+          svg(ICONS.dice) + '</button>' +
+      '</div>';
+  }
+
+  /* 管理员点了"换一批"：清掉缓存、重新抽一轮并重绘横幅。
+     服务端那侧的缓存也一并跳过（refresh=1），所见即所得。 */
+  function reshuffleHero() {
+    var wrap = $('#hero-wrap');
+    if (!wrap) return;
+    stopHeroRotation();
+    state.featured = null;
+    state.featuredForce = true;
+    state.featuredIdx = 0;
+    loadFeatured().then(function (list) {
+      if ($('#view').getAttribute('data-view') !== 'home') return;
+      if (!document.body.contains(wrap)) return;
+      preloadHeroImages(list);
+      wrap.innerHTML = heroHTML(list);
+      bindHero();
     });
   }
 
@@ -630,7 +666,20 @@
      不存在"文字先清空再填"或"图片还没下载完就置换背景"的中间帧，
      所以不会出现一闪一闪。 */
   function heroHTML(list) {
-    if (!list.length) return '';
+    if (!list.length) {
+      // 横幅数据源里一本书都没有（比如只开了每日推荐、书单还是空的）。
+      // 管理员看到一个带"去配置"的安静空态，普通成员直接看不到这块。
+      if (!IS_ADMIN) return '';
+      return '<section class="hero hero-empty rise" id="hero" aria-label="精选">' +
+          '<div class="hero-empty-inner">' +
+            '<span class="hero-empty-icon">' + svg(ICONS.dice) + '</span>' +
+            '<h2>首页横幅还没有内容</h2>' +
+            '<p>把几本书加进「每日推荐」，或者选一个书库作为横幅的数据源。</p>' +
+            '<button type="button" class="btn btn-primary" id="hero-config">' +
+              svg(ICONS.dice) + '横幅数据源</button>' +
+          '</div>' +
+        '</section>';
+    }
     var cur = list[state.featuredIdx % list.length];
     var bg = coverURL(cur);
     var thumbSrc = thumbURL(cur);
@@ -638,9 +687,10 @@
 
     var dots = '';
     for (var i = 0; i < n; i++) {
-      dots += '<button type="button" class="hero-dot' + (i === state.featuredIdx % n ? ' on' : '') +
-        '" data-idx="' + i + '" aria-label="第 ' + (i + 1) + ' 本" aria-current="' +
-        (i === state.featuredIdx % n) + '"></button>';
+      var on = i === state.featuredIdx % n;
+      dots += '<button type="button" class="hero-dot' + (on ? ' on' : '') +
+        '" data-idx="' + i + '" data-count="' + (i + 1) + ' / ' + n +
+        '" aria-label="第 ' + (i + 1) + ' 本" aria-current="' + on + '"></button>';
     }
 
     var nav = n > 1
@@ -668,6 +718,7 @@
         '</div>' +
         nav +
         (n > 1 ? '<div class="hero-dots" id="hero-dots">' + dots + '</div>' : '') +
+        heroToolbarHTML() +
       '</section>';
   }
 
@@ -740,6 +791,8 @@
     $$('#hero-dots .hero-dot').forEach(function (n, i) {
       var on = i === idx;
       n.classList.toggle('on', on);
+      // 窄屏只显示一个"3 / 10"的小计数，这里把序号同步过去
+      n.setAttribute('data-count', (i + 1) + ' / ' + list.length);
       n.setAttribute('aria-current', String(on));
     });
   }
@@ -787,7 +840,369 @@
     hero.addEventListener('mouseenter', stopHeroRotation);
     hero.addEventListener('mouseleave', startHeroRotation);
 
+    // 管理员工具：换一批 / 打开数据源面板（空态时的"横幅数据源"按钮也在这一处接上）
+    var shuffle = $('#hero-shuffle', hero);
+    if (shuffle) shuffle.addEventListener('click', reshuffleHero);
+    var config = $('#hero-config', hero);
+    if (config) config.addEventListener('click', openFeaturedConfig);
+
     startHeroRotation();
+  }
+
+  /* ------------------------------------------------------------------ 横幅数据源
+     首页横幅的内容从哪来，由这里决定：
+       · 每日推荐 —— 一份人工维护的书单，随时增删
+       · 随机书库 —— 从选定书库里随机取（不选就是全部书库）
+     两者可以同时开，开启后每次轮播都从合并结果里随机抽。
+     横幅本身不标注来源，面板只负责让管理员看清"现在用的是哪些书"。 */
+
+  /* 弹窗里用的局部状态：书单顺序就是提交顺序。 */
+  var PICK_MODAL = null;
+
+  function openFeaturedConfig() {
+    if (!IS_ADMIN) return;
+    // 打开面板时暂停自动轮播，改完关掉再继续，免得一边改一边翻
+    stopHeroRotation();
+
+    var modal = openModal(
+      '<div class="modal-head">' +
+        '<h3>横幅数据源</h3>' +
+        '<p>决定首页轮播展示哪些书。多个来源同时开启时，会从合并后的结果里随机抽取。</p>' +
+      '</div>' +
+      '<div class="modal-body" id="feat-body">' +
+        '<div class="sk-line" style="width:40%"></div>' +
+        '<div class="sk-line" style="width:72%"></div>' +
+        '<div class="sk-line" style="width:56%"></div>' +
+      '</div>' +
+      '<div class="modal-foot">' +
+        '<button type="button" class="btn" id="feat-shuffle">' + svg(ICONS.refresh) + '换一批看看</button>' +
+        '<span class="grow"></span>' +
+        '<button type="button" data-close class="btn">关闭</button>' +
+      '</div>',
+      { wide: true, panelClass: 'featured-panel' }
+    );
+
+    modal.$('#feat-shuffle').addEventListener('click', function () {
+      modal.close();
+      if (parseHash().name !== 'home') location.hash = '#/';
+      else reshuffleHero();
+    });
+    modal.$('.modal-panel').addEventListener('modal-closed', function () {
+      if (parseHash().name !== 'home') return;
+      if ($('#hero-wrap')) {
+        // 面板里改过设置：横幅内容作废，立刻换一批
+        state.featured = null;
+        reshuffleHero();
+      } else {
+        startHeroRotation();
+      }
+    });
+
+    PICK_MODAL = {
+      modal: modal,
+      q: '',
+      saving: false,
+      /** 书单里的书（数组顺序即展示顺序），每项是一本书的 JSON */
+      items: [],
+      /** 数据源配置 */
+      cfg: { picks_enabled: true, library_ids: [0] }
+    };
+
+    loadFeaturedConfig(PICK_MODAL, function (err) {
+      if (err) {
+        modal.$('#feat-body').innerHTML = '<div class="alert error">' + svg(ICONS.alert) +
+          '<span>读取失败：' + esc(err.message) + '</span></div>';
+      }
+    });
+
+    bindFeaturedConfig(PICK_MODAL);
+  }
+
+  function loadFeaturedConfig(ctx, done) {
+    Promise.all([
+      api('/api/daily-picks'),
+      api('/api/featured/source')
+    ]).then(function (res) {
+      ctx.items = res[0].books || [];
+      ctx.cfg = {
+        picks_enabled: res[0].picks_enabled !== false,
+        library_ids: (res[0].library_ids || [0])
+      };
+      renderFeaturedConfig(ctx);
+      done && done(null);
+    }).catch(function (err) {
+      done && done(err);
+    });
+  }
+
+  function renderFeaturedConfig(ctx) {
+    var body = ctx.modal.$('#feat-body');
+    if (!body) return;
+
+    var libs = state.libraries;
+    var selected = ctx.cfg.library_ids || [0];
+    var allSelected = selected.indexOf(0) !== -1 || !selected.length;
+
+    var libChips = '<button type="button" class="feat-lib' + (allSelected ? ' on' : '') +
+        '" data-lib="0" aria-pressed="' + allSelected + '">全部书库</button>' +
+      libs.map(function (l) {
+        var on = !allSelected && selected.indexOf(l.id) !== -1;
+        return '<button type="button" class="feat-lib' + (on ? ' on' : '') +
+          '" data-lib="' + l.id + '" aria-pressed="' + on + '">' +
+          '<span class="feat-lib-dot" style="' + tintStyle(l.name) + '"></span>' +
+          esc(l.name) +
+          '<span class="feat-lib-count">' + (l.book_count || 0) + '</span></button>';
+      }).join('');
+
+    var list = '';
+    if (!ctx.items.length) {
+      list = '<div class="feat-empty">' +
+          '<span class="feat-empty-icon">' + svg(ICONS.dice) + '</span>' +
+          '<p>书单还是空的。在下面搜索书名或作者，把想推荐的书加进来。</p>' +
+        '</div>';
+    } else {
+      list = '<ul class="feat-list" id="feat-list">' + ctx.items.map(function (b, i) {
+        return '<li class="feat-item" data-id="' + b.id + '" data-idx="' + i + '" draggable="true">' +
+            '<span class="feat-grip" title="拖动排序">' + iconHTML('builtin:grids') + '</span>' +
+            '<span class="feat-pick-cover">' + coverHTML(b, b.title) + '</span>' +
+            '<span class="feat-pick-body">' +
+              '<span class="feat-pick-title u-clamp1">' + esc(b.title) + '</span>' +
+              '<span class="feat-pick-meta">' + esc(b.author || '未知作者') +
+                (b.library_name ? ' · ' + esc(b.library_name) : '') + '</span>' +
+            '</span>' +
+            '<button type="button" class="btn btn-sm btn-danger feat-remove" data-remove="' + b.id + '" ' +
+              'title="移出每日推荐">' + svg(ICONS.trash) + '</button>' +
+          '</li>';
+      }).join('') + '</ul>';
+    }
+
+    body.innerHTML =
+      '<section class="feat-block">' +
+        '<div class="feat-block-head">' +
+          '<div>' +
+            '<h4>每日推荐</h4>' +
+            '<p>人工挑选的书，轮播时会优先出现。当前 ' + ctx.items.length + ' 本。</p>' +
+          '</div>' +
+          '<label class="switch" title="每日推荐是否参与轮播">' +
+            '<input id="feat-picks-on" type="checkbox"' + (ctx.cfg.picks_enabled ? ' checked' : '') +
+              ' aria-label="每日推荐是否参与轮播">' +
+            '<span class="switch-track"></span>' +
+          '</label>' +
+        '</div>' +
+        list +
+        '<div class="feat-search">' +
+          svg(ICONS.search) +
+          '<input id="feat-q" type="search" class="input" placeholder="搜索书名、作者、文件名，加入每日推荐…" ' +
+            'autocomplete="off" value="' + esc(ctx.q) + '">' +
+        '</div>' +
+        '<div class="feat-results" id="feat-results"></div>' +
+      '</section>' +
+
+      '<section class="feat-block">' +
+        '<div class="feat-block-head">' +
+          '<div>' +
+            '<h4>随机书库</h4>' +
+            '<p>开启后，从选中的书库里随机取书参与轮播；不选就是全部书库。</p>' +
+          '</div>' +
+        '</div>' +
+        '<div class="feat-libs" id="feat-libs">' + libChips + '</div>' +
+      '</section>' +
+
+      '<div class="feat-note">' + svg(ICONS.info) +
+        '<span>保存后首页横幅立刻换一批。内容本身每小时随机一次，同一小时内顺序保持不变。</span></div>' +
+      '<div id="feat-msg" class="alert error u-hidden"></div>';
+
+    bindFeaturedBody(ctx);
+    if (ctx.q) searchPickCandidates(ctx);
+  }
+
+  function bindFeaturedConfig(ctx) {
+    // 保存类操作：统一走这里，按钮置忙、失败回显
+    ctx.save = function (promise, okMsg) {
+      if (ctx.saving) return Promise.resolve();
+      ctx.saving = true;
+      return promise.then(function () {
+        ctx.saving = false;
+        if (okMsg) toast(okMsg, 'ok');
+        return loadFeaturedConfig(ctx);
+      }).catch(function (err) {
+        ctx.saving = false;
+        ctx.showError(err.message);
+      });
+    };
+    ctx.showError = function (msg) {
+      var box = ctx.modal.$('#feat-msg');
+      if (!box) { toast(msg, 'err'); return; }
+      box.innerHTML = svg(ICONS.alert) + '<span>' + esc(msg) + '</span>';
+      box.classList.remove('u-hidden');
+    };
+    ctx.hideError = function () {
+      var box = ctx.modal.$('#feat-msg');
+      if (box) box.classList.add('u-hidden');
+    };
+  }
+
+  function bindFeaturedBody(ctx) {
+    var modal = ctx.modal;
+
+    // 每日推荐开关
+    var toggle = modal.$('#feat-picks-on');
+    if (toggle) {
+      toggle.addEventListener('change', function () {
+        var on = this.checked;
+        toggle.disabled = true;
+        ctx.cfg.picks_enabled = on;
+        ctx.save(api('/api/featured/source', {
+          method: 'PUT',
+          body: { picks_enabled: on }
+        }), on ? '每日推荐已参与轮播' : '每日推荐已暂停').then(function () {
+          var t = modal.$('#feat-picks-on');
+          if (t) t.disabled = false;
+        });
+      });
+    }
+
+    // 书库多选
+    modal.$$('#feat-libs .feat-lib').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = Number(this.getAttribute('data-lib'));
+        var cur = ctx.cfg.library_ids || [0];
+        var next;
+        if (id === 0) {
+          next = [0]; // "全部书库"是排他的
+        } else {
+          var rest = cur.filter(function (x) { return x > 0 && x !== id; });
+          if (cur.indexOf(id) !== -1) {
+            next = rest; // 取消勾选
+          } else {
+            next = rest.concat([id]);
+          }
+          // 全选等于"全部书库"
+          if (next.length && next.length === state.libraries.length) next = [0];
+        }
+        if (!next.length) next = [0];
+        ctx.cfg.library_ids = next;
+        renderFeaturedConfig(ctx);
+        ctx.save(api('/api/featured/source', {
+          method: 'PUT',
+          body: { library_ids: next }
+        }));
+      });
+    });
+
+    // 移出书单
+    modal.$$('[data-remove]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = Number(this.getAttribute('data-remove'));
+        var fake = modal.$('#feat-' + id);
+        btn.disabled = true;
+        if (fake) fake.classList.add('is-removing');
+        ctx.save(api('/api/daily-picks/' + id, { method: 'DELETE' }), '已移出每日推荐');
+      });
+    });
+
+    // 拖拽排序：拖动结束后按 DOM 顺序把 ID 列表整体提交
+    var list = modal.$('#feat-list');
+    if (list) {
+      var dragId = null;
+      list.addEventListener('dragstart', function (ev) {
+        var li = ev.target.closest('.feat-item');
+        if (!li) return;
+        dragId = li.getAttribute('data-id');
+        li.classList.add('is-dragging');
+        if (ev.dataTransfer) {
+          ev.dataTransfer.effectAllowed = 'move';
+          // Firefox 不设 data 就不会开始拖动
+          try { ev.dataTransfer.setData('text/plain', dragId); } catch (e) {}
+        }
+      });
+      list.addEventListener('dragend', function () {
+        dragId = null;
+        modal.$$('.feat-item').forEach(function (n) {
+          n.classList.remove('is-dragging', 'is-drop-target');
+        });
+      });
+      list.addEventListener('dragover', function (ev) {
+        if (!dragId) return;
+        ev.preventDefault();
+        var over = ev.target.closest('.feat-item');
+        modal.$$('.feat-item').forEach(function (n) { n.classList.remove('is-drop-target'); });
+        if (over && over.getAttribute('data-id') !== dragId) over.classList.add('is-drop-target');
+      });
+      list.addEventListener('drop', function (ev) {
+        if (!dragId) return;
+        ev.preventDefault();
+        var over = ev.target.closest('.feat-item');
+        var dragged = modal.$('.feat-item[data-id="' + dragId + '"]');
+        if (!dragged) return;
+        if (over && over !== dragged) {
+          var r = over.getBoundingClientRect();
+          var after = ev.clientY > r.top + r.height / 2;
+          list.insertBefore(dragged, after ? over.nextSibling : over);
+        }
+        var ids = modal.$$('.feat-item').map(function (n) { return Number(n.getAttribute('data-id')); });
+        ctx.save(api('/api/daily-picks', { method: 'PUT', body: { book_ids: ids } }));
+      });
+    }
+
+    // 搜索候选
+    var q = modal.$('#feat-q');
+    if (q) {
+      q.addEventListener('input', debounce(function () {
+        ctx.q = this.value.trim();
+        if (!ctx.q) {
+          var box = modal.$('#feat-results');
+          if (box) box.innerHTML = '';
+          return;
+        }
+        searchPickCandidates(ctx);
+      }, 320));
+    }
+  }
+
+  /* 搜索可加入书单的书。已经在书单里的显示"已加入"，点击无效果。 */
+  function searchPickCandidates(ctx) {
+    var box = ctx.modal.$('#feat-results');
+    if (!box) return;
+    box.innerHTML = '<div class="feat-hint">搜索中…</div>';
+    var q = encodeURIComponent(ctx.q || '');
+    api('/api/daily-picks/candidates?q=' + q).then(function (d) {
+      if (ctx.q === '' || !ctx.modal.$('#feat-results')) return;
+      var books = (d.books || []).slice(0, 12);
+      if (!books.length) {
+        box.innerHTML = '<div class="feat-hint">没有找到匹配的书</div>';
+        return;
+      }
+      box.innerHTML = books.map(function (b) {
+        var added = !!b.in_picks;
+        return '<div class="feat-cand" data-cand="' + b.id + '">' +
+            '<span class="feat-cand-cover">' + coverHTML(b, b.title) + '</span>' +
+            '<span class="feat-cand-title u-clamp2">' + esc(b.title) + '</span>' +
+            '<span class="feat-cand-meta">' + esc(b.author || '未知作者') + '</span>' +
+            '<button type="button" class="btn btn-sm' + (added ? '' : ' btn-primary') + '" ' +
+              (added ? 'disabled' : '') + '>' +
+              (added ? '已加入' : svg(ICONS.plus) + '加入') + '</button>' +
+          '</div>';
+      }).join('');
+
+      ctx.modal.$$('#feat-results [data-cand]').forEach(function (row) {
+        var btn = row.querySelector('button');
+        btn.addEventListener('click', function () {
+          var id = Number(row.getAttribute('data-cand'));
+          btn.disabled = true;
+          ctx.save(api('/api/daily-picks', {
+            method: 'POST',
+            body: { book_id: id }
+          }), '已加入每日推荐').then(function () {
+            // 重新搜索一次，让这一行变成"已加入"
+            searchPickCandidates(ctx);
+          });
+        });
+      });
+    }).catch(function (err) {
+      box.innerHTML = '<div class="alert error">' + svg(ICONS.alert) +
+        '<span>' + esc(err.message) + '</span></div>';
+    });
   }
 
   /* ------------------------------------------------------------------ 首页
@@ -2535,7 +2950,8 @@
     wrap.className = 'modal';
     wrap.innerHTML =
       '<div class="modal-backdrop" data-close></div>' +
-      '<div class="modal-panel' + (opts.wide ? ' wide' : '') + '" role="dialog" aria-modal="true">' +
+      '<div class="modal-panel' + (opts.wide ? ' wide' : '') +
+        (opts.panelClass ? ' ' + opts.panelClass : '') + '" role="dialog" aria-modal="true">' +
         inner +
       '</div>';
 
@@ -2550,6 +2966,10 @@
       document.removeEventListener('keydown', onKey);
       wrap.remove();
       lockScroll(false);
+      // 弹窗自己可能也需要知道"我关了"（比如横幅面板要把首页横幅刷新一下）。
+      // 在面板节点上派发一个不冒泡的事件，别的弹窗不会收到。
+      var panel = wrap.querySelector('.modal-panel');
+      if (panel) panel.dispatchEvent(new CustomEvent('modal-closed'));
     }
     document.addEventListener('keydown', onKey);
 

@@ -123,6 +123,8 @@ func NewRouter(cfg *config.Config, st *store.Store, sc *scanner.Scanner) (*gin.E
 	if s.devFS != nil {
 		r.HTMLRender = &devRenderer{server: s}
 		r.GET("/__dev/reload", s.devReload)
+		// 仅开发模式：把横幅缓存拨过期，方便验证"每小时刷新"。
+		r.POST("/__dev/featured-expire", s.debugExpireFeatured)
 	}
 
 	// ---- 无需登录 ----
@@ -179,6 +181,16 @@ func NewRouter(cfg *config.Config, st *store.Store, sc *scanner.Scanner) (*gin.E
 
 	admin.GET("/api/admin/settings", s.getAdminSettings)
 	admin.PUT("/api/admin/settings", s.updateAdminSettings)
+
+	// 首页横幅：数据源配置 + 每日推荐书单。
+	// 读取书单放在 admin 组：普通成员用不到，也避免成员绕过横幅直接拿走书单。
+	admin.GET("/api/featured/source", s.getFeaturedSource)
+	admin.PUT("/api/featured/source", s.updateFeaturedSource)
+	admin.GET("/api/daily-picks", s.listDailyPicks)
+	admin.POST("/api/daily-picks", s.addDailyPick)
+	admin.PUT("/api/daily-picks", s.setDailyPicks)
+	admin.DELETE("/api/daily-picks/:id", s.removeDailyPick)
+	admin.GET("/api/daily-picks/candidates", s.searchDailyPickCandidates)
 
 	admin.PUT("/api/books/:id/metadata", s.updateBookMetadata)
 	admin.DELETE("/api/books/:id", s.deleteBookAdmin)

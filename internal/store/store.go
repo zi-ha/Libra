@@ -112,6 +112,15 @@ func (s *Store) Migrate() error {
 			key   TEXT PRIMARY KEY,
 			value TEXT NOT NULL
 		)`,
+
+		// 每日推荐（编辑精选）：管理员手工维护的一小份书单，首页横幅从中随机取。
+		// position 决定后台列表里的显示顺序；书本身被删时这里不动，
+		// 查询时联表 deleted = 0 过滤，误删后再加回来仍然留在书单里。
+		`CREATE TABLE IF NOT EXISTS daily_picks (
+			book_id    INTEGER PRIMARY KEY REFERENCES books(id) ON DELETE CASCADE,
+			position   INTEGER NOT NULL DEFAULT 0,
+			created_at INTEGER NOT NULL
+		)`,
 	}
 
 	for i, stmt := range stmts {

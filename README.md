@@ -731,6 +731,15 @@ jobs:
 docker exec -it libra /usr/local/bin/libra reset-password admin 新密码
 ```
 
+**`docker stop` 时容器报 exit 2？**  
+1.0.1 起应用会捕获 `SIGTERM` 并调用 `http.Server.Shutdown` 优雅退出。请使用 1.0.1 或更新的镜像；compose 中也建议保留：
+
+```yaml
+stop_grace_period: 15s
+```
+
+旧镜像收到 `SIGTERM` 后由 Go 运行时直接终止，退出码会是 2，看起来像“错误退出”。
+
 **数据会不会丢？**  
 只要把 `/data` 挂载到宿主机，删除 / 重建容器不会丢数据。书籍目录以只读方式挂载，Libra 不会修改原始文件。
 

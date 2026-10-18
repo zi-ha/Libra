@@ -21,6 +21,8 @@ services:
     image: libra:1.0.1
     container_name: libra
     restart: unless-stopped
+    # 给应用 10s 优雅关闭时间，避免 docker stop 被当成异常退出
+    stop_grace_period: 15s
 
     ports:
       - "8080:8080"
@@ -30,7 +32,7 @@ services:
       LIBRA_ADDR: ":8080"
       # 数据库、封面、图标都放在 /data
       LIBRA_DATA_DIR: "/data"
-      # 只允许在 /books 下添加媒体库
+      # 只允许在 /books 下添加书库
       LIBRA_LIBRARY_ROOT: "/books"
       # NAS 性能弱可改成 1
       LIBRA_SCAN_CONCURRENCY: "2"

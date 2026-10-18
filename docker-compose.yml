@@ -12,6 +12,8 @@ services:
         WITH_POPPLER: "${WITH_POPPLER:-1}"
     container_name: libra
     restart: unless-stopped
+    # 给应用 10s 优雅关闭时间，避免 docker stop 被当成异常退出
+    stop_grace_period: 15s
 
     ports:
       - "8080:8080"
@@ -21,7 +23,7 @@ services:
       LIBRA_ADDR: ":8080"
       # 数据库与封面都落在 /data，务必挂载出来，容器重建不丢数据
       LIBRA_DATA_DIR: "/data"
-      # 只允许在 /books 之下创建媒体库
+      # 只允许在 /books 之下创建书库
       LIBRA_LIBRARY_ROOT: "/books"
       # pdftoppm 并发数，NAS 性能弱就调到 1~2
       LIBRA_SCAN_CONCURRENCY: "2"

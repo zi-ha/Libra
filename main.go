@@ -4,10 +4,16 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
+	"time"
 
 	"libra/internal/auth"
 	"libra/internal/config"
@@ -98,8 +104,37 @@ func main() {
 	log.Printf("  数据库:   %s", cfg.DBPath)
 	log.Printf("  扫描并发: %d  封面宽度: %dpx", cfg.ScanConcurrency, cfg.CoverWidth)
 
-	if err := engine.Run(cfg.Addr); err != nil {
-		log.Fatalf("服务启动失败: %v", err)
+	srv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           engine,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.ListenAndServe()
+	}()
+
+	// Docker stop / Ctrl+C 会发送 SIGTERM / SIGINT。
+	// 收到后走 http.Server.Shutdown，让进程以 0 退出，而不是被信号直接终止成 exit 2。
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(quit)
+
+	select {
+	case err := <-errCh:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("服务启动失败: %v", err)
+		}
+	case sig := <-quit:
+		log.Printf("收到信号 %s，正在关闭服务…", sig)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("关闭服务超时: %v", err)
+			_ = srv.Close()
+		}
+		log.Printf("服务已停止")
 	}
 }
 

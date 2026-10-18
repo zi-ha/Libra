@@ -528,8 +528,29 @@
     var t = $('#tb-title');
     var s = $('#tb-sub');
     if (t) t.textContent = title || 'Libra';
+    // 没有副标题时不渲染那个"·"，否则真会出现只有一个小圆点的空行
+    var bar = $('#topbar');
+    if (bar) bar.classList.toggle('no-sub', !sub);
+    renderCrumbSep(sub);
     if (s) s.textContent = sub || '';
     document.title = title && title !== 'Libra' ? title + ' · Libra' : 'Libra';
+  }
+
+  /* 顶栏右侧的排序 / 深浅色 / 标记墙只属于"全部书籍"页。
+     首页、书籍详情、管理页把这一块整体撤掉：标题就是书名，排序对详情页没有意义，
+     留着反而让顶栏显得很吵。没有这些工具时面包屑自动吃掉剩余宽度、居中显示。 */
+  function setTopbarTools(show) {
+    var bar = $('#topbar');
+    if (bar) bar.classList.toggle('page-topbar', !!show);
+  }
+
+  /* 面包屑之间那个"·"必须有副标题才有意义。
+     不能只靠 CSS 隐藏：现在 setTopbar() 会先同步把 no-sub 类挂上，
+     但路由顺序一变就可能出现"只有书名 + 一个孤零零的点"的中间帧。
+     所以直接把分隔符的可见性交给 JS 决定。 */
+  function renderCrumbSep(sub) {
+    var sep = $('.crumb-sep');
+    if (sep) sep.style.display = sub ? '' : 'none';
   }
 
   /* ------------------------------------------------------------------ 封面 */
@@ -601,7 +622,13 @@
 
   /* 横幅：左边是"当前这本"的封面缩略图，右边是书名 / 作者 / 信息 / 按钮。
      大图仍由整块横幅的背景承担 —— 同样是这一本的封面。
-     翻页靠两侧按钮、底部指示点与自动轮播。 */
+     翻页靠两侧按钮、底部指示点与自动轮播。
+
+     防闪的关键：整块内容（封面、书名、作者、元信息、按钮）都装在一个 .hero-slide 里，
+     所有可轮播的书各自预加载一份背景层，再提前解码好下一张封面。
+     换页时只做两件事：旧幻灯片淡出、新幻灯片淡入，背景层交叉溶解 ——
+     不存在"文字先清空再填"或"图片还没下载完就置换背景"的中间帧，
+     所以不会出现一闪一闪。 */
   function heroHTML(list) {
     if (!list.length) return '';
     var cur = list[state.featuredIdx % list.length];
@@ -612,7 +639,8 @@
     var dots = '';
     for (var i = 0; i < n; i++) {
       dots += '<button type="button" class="hero-dot' + (i === state.featuredIdx % n ? ' on' : '') +
-        '" data-idx="' + i + '" aria-label="第 ' + (i + 1) + ' 本"></button>';
+        '" data-idx="' + i + '" aria-label="第 ' + (i + 1) + ' 本" aria-current="' +
+        (i === state.featuredIdx % n) + '"></button>';
     }
 
     var nav = n > 1
@@ -623,75 +651,96 @@
       : '';
 
     return '<section class="hero rise" id="hero" aria-label="精选">' +
-        '<div class="hero-bg is-on" id="hero-bg"' +
-          (bg ? ' style="background-image:url(&quot;' + esc(bg) + '&quot;)"' : '') + '></div>' +
+        // 背景层：每本书一层，全部提前加载好，换页只切 .is-on
+        '<div class="hero-bgs" id="hero-bgs" aria-hidden="true">' +
+          list.map(function (b, i) {
+            var u = coverURL(b);
+            return '<div class="hero-bg' + (i === state.featuredIdx % n ? ' is-on' : '') + '"' +
+              ' data-idx="' + i + '" data-url="' + esc(u) + '"' +
+              (u ? ' style="background-image:url(&quot;' + esc(u) + '&quot;)"' : '') + '></div>';
+          }).join('') +
+        '</div>' +
         '<div class="hero-shade"></div>' +
-        '<div class="hero-inner">' +
-          /* 左侧封面缩略图：固定 2:3、object-fit: cover 铺满，
-             封面本身不是 2:3 时居中裁剪，绝不出现黑边白边 */
-          '<a class="hero-thumb' + (bg ? '' : ' is-empty') + '" id="hero-thumb" href="#/book/' + cur.id + '"' +
-            ' aria-label="' + esc(cur.title) + '">' +
-            '<img id="hero-thumb-img" alt=""' + (thumbSrc ? ' src="' + esc(thumbSrc) + '"' : '') + '>' +
-          '</a>' +
-          '<div class="hero-copy">' +
-            '<h2 class="hero-title' + titleSizeClass(cur.title) + '" id="hero-title">' +
-              '<span id="hero-title-text">' + esc(cur.title) + '</span></h2>' +
-            '<div class="hero-sub" id="hero-sub">' + esc(heroSub(cur)) + '</div>' +
-            '<div class="hero-meta" id="hero-meta">' + heroMetaHTML(cur) + '</div>' +
-            '<div class="hero-actions">' +
-              '<a class="btn btn-primary" id="hero-open" href="#/book/' + cur.id + '">' +
-                svg(ICONS.play) + '查看详情</a>' +
-              '<a class="btn" id="hero-dl" href="/download/' + cur.id + '">' +
-                svg(ICONS.download) + '下载文件</a>' +
-            '</div>' +
-          '</div>' +
+        '<div class="hero-slides">' +
+          list.map(function (b, i) {
+            return heroSlideHTML(b, i === state.featuredIdx % n);
+          }).join('') +
         '</div>' +
         nav +
         (n > 1 ? '<div class="hero-dots" id="hero-dots">' + dots + '</div>' : '') +
       '</section>';
   }
 
-  /* 换一张精选：只改文字、背景与指示点，不重建整块 DOM */
+  /* 一张幻灯片 = 一张封面 + 一份文案。非当前幻灯片也一起渲染出来（只是不可见），
+     这样翻页时没有一次 DOM 写入发生在"看得见"的时刻。 */
+  function heroSlideHTML(b, on) {
+    var hasCover = !!coverURL(b);
+    return '<div class="hero-slide' + (on ? ' is-on' : '') + '" data-idx="' + b.id + '">' +
+        '<div class="hero-inner">' +
+          /* 左侧封面缩略图：固定 2:3、object-fit: cover 铺满，
+             封面本身不是 2:3 时居中裁剪，绝不出现黑边白边 */
+          '<a class="hero-thumb' + (hasCover ? '' : ' is-empty') + '" href="#/book/' + b.id + '"' +
+            ' tabindex="' + (on ? '0' : '-1') + '" aria-label="' + esc(b.title) + '">' +
+            '<img alt="" decoding="async"' +
+              (thumbURL(b) ? ' src="' + esc(thumbURL(b)) + '"' : '') + '></a>' +
+          '<div class="hero-copy">' +
+            '<h2 class="hero-title' + titleSizeClass(b.title) + '">' +
+              '<span>' + esc(b.title) + '</span></h2>' +
+            '<div class="hero-sub">' + esc(heroSub(b)) + '</div>' +
+            '<div class="hero-meta">' + heroMetaHTML(b) + '</div>' +
+            '<div class="hero-actions">' +
+              '<a class="btn btn-primary" href="#/book/' + b.id + '" tabindex="' + (on ? '0' : '-1') + '">' +
+                svg(ICONS.play) + '查看详情</a>' +
+              '<a class="btn" href="/download/' + b.id + '" tabindex="' + (on ? '0' : '-1') + '">' +
+                svg(ICONS.download) + '下载文件</a>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  /* 预加载：把 list 里所有背景图与缩略图都拉进浏览器缓存。
+     之前换页时是把新 URL 直接写到 background-image 上，图片没下载完的那一瞬间
+     背景是空的 —— 这就是"一闪一闪"的主因之一。 */
+  function preloadHeroImages(list) {
+    (list || []).forEach(function (b) {
+      [coverURL(b), thumbURL(b)].forEach(function (u) {
+        if (!u) return;
+        var im = new Image();
+        im.decoding = 'async';
+        im.src = u;
+        if (im.decode) im.decode().catch(function () {});
+      });
+    });
+  }
+
+  /* 换一张精选：只切 class，不动任何文字与 URL。
+     旧幻灯片保持可见直到新幻灯片完全淡入（.is-out 的 transition-delay 与淡入同长），
+     两层短暂叠在一起 —— 叠着切换永远不会有中间的空帧。 */
   function selectFeatured(idx) {
     var list = state.featured || [];
     if (!list.length) return;
     idx = (idx + list.length) % list.length;
+    if (idx === state.featuredIdx && $('#hero .hero-slide.is-on')) return;
     state.featuredIdx = idx;
-    var b = list[idx];
-    var url = coverURL(b);
-    var thumbSrc = thumbURL(b);
 
-    var bg = $('#hero-bg');
-    if (bg) bg.style.backgroundImage = url ? 'url("' + url + '")' : '';
+    $$('#hero .hero-slide').forEach(function (n, i) {
+      var on = i === idx;
+      n.classList.toggle('is-on', on);
+      n.classList.toggle('is-out', !on);
+      n.setAttribute('aria-hidden', String(!on));
+      // 隐藏的幻灯片不参与 Tab 焦点链，否则键盘会跳到看不见的按钮上
+      $$('a', n).forEach(function (a) { a.setAttribute('tabindex', on ? '0' : '-1'); });
+    });
 
-    var title = $('#hero-title');
-    var titleText = $('#hero-title-text');
-    if (title && titleText) {
-      titleText.textContent = b.title;
-      // 每换一本都重算字号档位，否则长书名会沿用短书名的大字号被截断
-      title.className = 'hero-title' + titleSizeClass(b.title);
-    }
-    var sub = $('#hero-sub');
-    if (sub) sub.textContent = heroSub(b);
-    var meta = $('#hero-meta');
-    if (meta) meta.innerHTML = heroMetaHTML(b);
-    var open = $('#hero-open');
-    if (open) open.setAttribute('href', '#/book/' + b.id);
-    var dl = $('#hero-dl');
-    if (dl) dl.setAttribute('href', '/download/' + b.id);
-
-    // 右上角缩略图跟着换（含无封面的情况，避免残留上一张）
-    var thumb = $('#hero-thumb');
-    var thumbImg = $('#hero-thumb-img');
-    if (thumb) {
-      thumb.setAttribute('href', '#/book/' + b.id);
-      thumb.setAttribute('aria-label', b.title);
-      thumb.classList.toggle('is-empty', !url);
-    }
-    if (thumbImg) thumbImg.src = thumbSrc || '';
+    $$('#hero-bgs .hero-bg').forEach(function (n, i) {
+      n.classList.toggle('is-on', i === idx);
+    });
 
     $$('#hero-dots .hero-dot').forEach(function (n, i) {
-      n.classList.toggle('on', i === idx);
+      var on = i === idx;
+      n.classList.toggle('on', on);
+      n.setAttribute('aria-current', String(on));
     });
   }
 
@@ -734,9 +783,9 @@
       });
     });
 
-    // 横幅上点"下载"不应该先跳进详情页
-    var dl = $('#hero-dl', hero);
-    if (dl) dl.addEventListener('click', function (ev) { ev.stopPropagation(); });
+    // 鼠标停在横幅上时不自动翻页：正在读简介却被换走，体验很差
+    hero.addEventListener('mouseenter', stopHeroRotation);
+    hero.addEventListener('mouseleave', startHeroRotation);
 
     startHeroRotation();
   }
@@ -751,10 +800,12 @@
 
     if (already && !force) {
       setTopbar('首页', state.libraries.length + ' 个书库');
+      setTopbarTools(false);
       return;
     }
 
     stopHeroRotation();
+    setTopbarTools(false);
     view.setAttribute('data-view', 'home');
     view.innerHTML =
       '<div id="hero-wrap"></div>' +
@@ -778,6 +829,7 @@
       if (view.getAttribute('data-view') !== 'home') return;
       var wrap = $('#hero-wrap');
       if (!wrap) return;
+      preloadHeroImages(list);
       wrap.innerHTML = heroHTML(list);
       bindHero();
     });
@@ -1099,6 +1151,7 @@
       var subEl = $('#wall-sub');
       if (subEl) subEl.textContent = wallSubtitle();
       setTopbar(currentLibraryName(), wallSubtitle());
+      setTopbarTools(true);
       paintDensitySeg();
       return;
     }
@@ -1123,6 +1176,7 @@
       '<div id="feed-foot" class="feed-foot u-hidden"></div>';
 
     setTopbar(currentLibraryName(), wallSubtitle());
+    setTopbarTools(true);
     bindDensitySeg();
   }
 
@@ -1289,6 +1343,8 @@
     var view = $('#view');
     state.detailId = id;
     stopHeroRotation();
+    // 详情页顶栏只要书名与作者：排序、深浅色切换、标记墙都不再显示
+    setTopbarTools(false);
     view.setAttribute('data-view', 'detail');
 
     // 详情接口在局域网里通常几毫秒就回来。原先是一进去就先把内容换成
@@ -1296,6 +1352,7 @@
     // 骨架屏，正常情况直接由封面墙整体切换成详情。
     var slowTimer = setTimeout(function () {
       if (view.getAttribute('data-view') !== 'detail' || state.detailId !== id) return;
+      setTopbar('书籍详情', '');
       view.innerHTML = '<div class="page-head"><div class="grow">' +
         '<div class="sk-line" style="width:180px"></div></div></div>' +
         '<div class="detail-hero"><div class="detail-grid">' +
@@ -1390,6 +1447,7 @@
       var errHTML = '<div class="empty"><div class="empty-mark">' + svg(ICONS.alert) + '</div>' +
         '<h2>打不开这本书</h2><p>' + esc(err.message) + '</p>' +
         '<a href="#/" class="btn">返回书库</a></div>';
+      setTopbar('书籍详情', '');
       view.innerHTML = errHTML;
     });
   }
@@ -1549,6 +1607,7 @@
     var view = $('#view');
     stopHeroRotation();
     view.setAttribute('data-view', 'admin');
+    setTopbarTools(false);
     view.innerHTML =
       '<div class="page-head">' +
         '<div class="grow">' +
@@ -1682,6 +1741,7 @@
     view.setAttribute('data-view', 'libraries');
     view.innerHTML = html;
     setTopbar('书库', state.libraries.length + ' 座书库');
+    setTopbarTools(false);
     closeBootGate();
 
     var newBtn = $('#new-lib');
@@ -2052,6 +2112,7 @@
     view.setAttribute('data-view', 'users');
     view.innerHTML = html;
     setTopbar('账号管理', '');
+    setTopbarTools(false);
     closeBootGate();
 
     $('#new-user').addEventListener('click', function () { openUserForm(); });

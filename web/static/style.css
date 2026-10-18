@@ -489,6 +489,17 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 }
 .crumb .crumb-sep { color: var(--text-3); opacity: .6; }
 
+/* 没有副标题（首页、书籍详情、管理页）时不留那个"·" */
+.topbar.no-sub .crumb-sep,
+.topbar.no-sub .crumb-sub { display: none; }
+
+/* 右侧工具组（排序 / 深浅色 / 标记墙）只属于"全部书籍"：路由会给 <header>
+   加上 .page-topbar，其余页面不再出现这一行控件。
+   工具组退场后面包屑独占整行，标题居中 —— 详情页顶栏就只剩书名 · 作者。 */
+.topbar .header-tools { display: none; }
+.topbar.page-topbar .header-tools { display: flex; }
+.topbar:not(.page-topbar) .crumb { justify-content: center; }
+
 .topbar .brand { display: none; }
 
 .search { position: relative; flex: 0 1 320px; min-width: 140px; }
@@ -521,7 +532,7 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
 }
 .search input:focus + kbd, .search input:not(:placeholder-shown) + kbd { display: none; }
 
-.header-tools { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+.header-tools { align-items: center; gap: 8px; margin-left: auto; flex: none; }
 
 /* 分段控件 */
 .segmented {
@@ -676,21 +687,24 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   width: 100%;
   height: clamp(340px, 32vw, 460px);
 }
-.hero-bg, .hero-bg-next {
-  position: absolute; inset: -6%; z-index: 0;
+.hero-bgs { position: absolute; inset: 0; z-index: 0; }
+.hero-bg {
+  position: absolute; inset: -6%;
   /* 所有封面走同一套处理：等比 cover 铺满、居中、高斯模糊、整体压暗。
      不识别书名在顶部还是底部、人物在左还是在右 —— 任何构图都按同一规则处理，
-     所以轮播切换时背景的质感始终一致。 */
+     所以轮播切换时背景的质感始终一致。
+     每本书一层背景，全部在渲染时就带着图片 URL 出场：换页只切透明度，
+     不会出现"新图还没下载完、背景先空一下"的那种闪。 */
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
   filter: blur(28px) saturate(115%) brightness(.86);
   transform: scale(1.04);
-  transition: opacity .8s var(--ease);
   opacity: 0;
+  transition: opacity .75s var(--ease);
+  will-change: opacity;
 }
 .hero-bg.is-on { opacity: 1; }
-.hero-bg-next { z-index: 1; }
 /* 暗色遮罩：横向不再做左重右轻的差异处理，整张封面统一压暗；
    只有上下轻微加深，让顶部的书名和底部的指示点更容易看清。 */
 .hero-shade {
@@ -698,6 +712,33 @@ svg { display: block; flex: none; width: 16px; height: 16px; }
   background:
     linear-gradient(180deg, rgba(6, 7, 10, .55) 0%, rgba(6, 7, 10, .34) 44%, rgba(6, 7, 10, .76) 100%),
     rgba(6, 7, 10, .18);
+}
+
+/* 幻灯片堆叠：每本书的封面 + 文案各占一层，叠在同一个位置。
+   旧的一层淡出时不会立刻消失（.is-out 的 visibility 延迟到新一层盖满之后），
+   两层始终重叠，所以换页过程中任何一帧都是"完整的上一页"或"完整的下一页"，
+   不存在文字被先清空的空帧 —— 这正是原先一闪一闪的根源。 */
+.hero-slides { position: absolute; inset: 0; z-index: 3; }
+.hero-slide {
+  position: absolute; inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .5s var(--ease), visibility 0s linear .5s;
+}
+.hero-slide.is-on {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  /* 正在淡出的那一页压在新页下面：新页从它身上半透明地盖过来，
+     不会出现两层字形叠加发虚 */
+  z-index: 1;
+  /* 稍微晚一点起淡入：等旧页先暗下去一截，层次更清楚 */
+  transition: opacity .5s var(--ease) .12s, visibility 0s linear 0s;
+}
+.hero-slide.is-out {
+  /* 淡出到一半左右就交给新一层盖住，避免两层同时半透明时颜色发灰 */
+  transition: opacity .3s var(--ease), visibility 0s linear .68s;
 }
 .hero-inner {
   position: relative; z-index: 3;
@@ -1936,8 +1977,10 @@ html[data-boot] .rise { animation: rise .34s var(--ease-out) both; }
   .lib-cover-preview { width: 100%; max-width: 300px; }
   /* 窄屏横幅：封面在左上、文字在右侧，两栏并排；
      封面按比例缩到 104×156，文字最大宽度不再受限。
-     高度改为自适应（原来 clamp 出来的 340px 在手机上太高）。 */
-  .hero { height: auto; min-height: 0; }
+     高度改为自适应（原来 clamp 出来的 340px 在手机上太高）。
+     .hero-slides 里全是绝对定位的幻灯片，撑不出父级高度，所以这里补一个
+     固定高度，取值与 .hero-inner 在窄屏下的实际高度接近（封面 156 + 上下内边距）。 */
+  .hero { height: 220px; min-height: 220px; }
   .hero-inner {
     display: grid;
     grid-template-columns: 104px minmax(0, 1fr);

@@ -119,7 +119,9 @@
         <kbd>/</kbd>
       </div>
 
-      <div class="header-tools">
+      <!-- 只在"全部书籍"页出现的一组工具：排序 / 深浅色 / 标记墙切换。
+           首页、详情、管理页由路由按需加 page-topbar，这一块整体隐藏。 -->
+      <div class="header-tools" id="header-tools">
         <select id="sort" class="select hide-md" aria-label="排序">
           <option value="title:asc">书名 A→Z</option>
           <option value="title:desc">书名 Z→A</option>
